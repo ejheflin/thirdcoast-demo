@@ -1,0 +1,72 @@
+{
+  "_comment": "The starting state of a demo playoff night: every league seeded from seed-config.json, then courts assigned exactly as the venue's own bracket PDFs schedule them. This is the 6:30pm wave of Tuesday 15 September 2026 (R3-26) -- eleven matches on their real courts, one court per match, no clashes. Court 1 is idle because the brackets do not use it at 6:30.",
+  "_whyNotEveryCourt": "The 7:00pm matches are deliberately left unassigned. Every one of them is scheduled onto a court the 6:30 wave is still using (Coed 4s A 1v8 wants court 2, where 4v5 is playing), so at the moment this night starts they are genuinely waiting for a court -- which is what the controller's 'needs a court' queue is for. An earlier version of this file filled all twelve courts round-robin, which looked busier and described a night nobody was running.",
+  "_noTimes": "Times are documented here and nowhere else on purpose: the event log has no concept of a match time. A playoff night does not run to a clock -- the coordinator assigns a court when one frees up -- so the PDF's times inform WHICH matches start on court, and are not data the system stores.",
+  "_sharedBy": "prototype/tools/demo-playoff-night.sh (native server, via curl) and prototype/demo.html (browser wasm build). Edit here, not in either consumer.",
+  "_source": "reference/brackets/Tuesday-*-Playoffs-R3-26*.pdf -- the venue's own brackets. Match ids are this engine's, resolved from the PDF's seed pairings.",
+  "config": "seed-config.json",
+  "assign": [
+    {
+      "league": "Coed 4s A",
+      "match": 2,
+      "court": "Court 2"
+    },
+    {
+      "league": "Coed 4s A",
+      "match": 4,
+      "court": "Court 3"
+    },
+    {
+      "league": "Coed 4s B",
+      "match": 1,
+      "court": "Court 9"
+    },
+    {
+      "league": "Coed 4s B",
+      "match": 2,
+      "court": "Court 8"
+    },
+    {
+      "league": "Coed 4s BB",
+      "match": 2,
+      "court": "Court 4"
+    },
+    {
+      "league": "Coed 4s BB",
+      "match": 4,
+      "court": "Court 5"
+    },
+    {
+      "league": "Coed 4s Upper Rec",
+      "match": 1,
+      "court": "Court 11"
+    },
+    {
+      "league": "Coed 4s Upper Rec",
+      "match": 4,
+      "court": "Court 12"
+    },
+    {
+      "league": "Coed 4s Upper Rec",
+      "match": 3,
+      "court": "Court 10"
+    },
+    {
+      "league": "Womens 2s A",
+      "match": 1,
+      "court": "Court 7"
+    },
+    {
+      "league": "Womens 2s A",
+      "match": 2,
+      "court": "Court 6"
+    }
+  ],
+  "_waitingForACourtAt7pm": [
+    "Coed 4s A m1 (1v8) Carolina Beach Bumpers vs Watermelon -> Court 2",
+    "Coed 4s A m3 (2v7) Holy Blockamole Infinity vs Score Check -> Court 3",
+    "Coed 4s BB m1 (1v8) Chocolate City vs 3 OGs and Bae -> Court 4",
+    "Coed 4s BB m3 (2v7) Not Good at Volleyball Puns vs Net Ninjas -> Court 5",
+    "Coed 4s Upper Rec m2 (5v12) Bump, set, dammit! vs Unprotected Sets -> Court 12"
+  ]
+}

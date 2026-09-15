@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Third Coast — playoff night</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  THE HOSTED DEMO. One page, one thing on it, chosen by the URL it was
+  opened at:
+
+    .../controller/   the iPad controller  (control2.html)
+    .../screens/      the TV board         (board.html)
+
+  There is no chrome and no toggle. Two links handed over with a sentence
+  each explain themselves; a segmented control on top of an app that is
+  itself full of controls does not.
+
+  There is no server either. cmd/wasmdemo is the real Go server compiled
+  to WebAssembly; this page owns that instance, seeds it into "the start
+  of playoff night" from data/demo-seed.json, and answers the /api/ calls
+  the framed page makes (prototype/api-shim.js forwards them here). A
+  result reported in the controller runs the same domain.Replay that runs
+  at the venue.
+
+  ONE TOURNAMENT ACROSS BOTH TABS. Splitting one page into two URLs
+  would otherwise have given each its own engine and its own event log,
+  so a winner reported in the controller moved nothing on the board.
+  They are linked over BroadcastChannel instead: the controller owns the
+  engine, the screens tab asks it for every /api/ call, and the board
+  picks up a result on its next poll. Open them in either order -- a
+  screens tab that starts alone runs its own night and hands over the
+  moment a controller appears.
+
+  Reloading the controller is how you start over -- the log is in memory,
+  so a refresh deals a fresh night. That is also why nobody can spoil the
+  demo for anybody else: the channel is scoped to one browser.
+
+  WHAT THIS IS NOT: a venue deployment. No durability, no authentication.
+  A real tournament runs the native binary on the box's own LAN. See
+  cmd/wasmdemo/main_js.go.
+
+  Serve it over HTTP (wasm will not instantiate from file://):
+    prototype/tools/build-demo.sh --serve
+-->
+<style>
+:root{
+  --ground:#0B1220; --panel:#141C2C; --line:#2C3752;
+  --ink:#FFFFFF; --dim:#8E99AB; --faint:#5D6779; --live-txt:#FF6EC7;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--ground)}
+body{
+  font-family:"Barlow Condensed","Arial Narrow",sans-serif;color:var(--ink);
+  /* 100% is the fallback on the line above. It has to be dvh here for
+     the same reason control2.html already uses dvh for its own body:
+     on iOS Safari the 100% viewport includes the strip behind the URL
+     bar, so a frame sized to it hangs below what is actually visible
+     and its last rows cannot be reached. This wrapper sizes the frame,
+     so the wrapper getting this wrong was enough to clip an app that
+     had already got it right. */
+  height:100dvh;
+}
+
+#pane{
+  position:fixed;left:0;top:0;width:100%;
+  height:100%; height:100dvh;
+  display:flex;align-items:center;justify-content:center;
+}
+#pane iframe{border:0;display:block;width:100%;height:100%}
+
+/* The board screens are built for a 16:9 TV and letterbox themselves into
+   anything else. Centring a 16:9 frame makes the leftover space read as
+   deliberate matting around a television, which is what it is. The
+   controller takes the whole window -- it is responsive on its own, and
+   every pixel of width above 1024 goes into its bracket column. */
+body[data-mode="board"] #pane iframe{
+  width:100%;height:auto;max-width:100%;max-height:100%;aspect-ratio:16/9;
+}
+
+#boot{
+  position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;background:var(--ground);text-align:center;padding:24px;
+}
+#boot.done{display:none}
+#boot .big{
+  font-family:"Archivo Black",sans-serif;font-size:clamp(20px,3.4vw,34px);
+  text-transform:uppercase;letter-spacing:.04em;
+}
+#boot .sub{font-size:clamp(14px,1.6vw,18px);color:var(--dim);letter-spacing:.04em;max-width:52ch}
+#boot .sub code{font-family:ui-monospace,monospace;font-size:.92em;color:var(--faint)}
+#boot .err{color:var(--live-txt)}
+.dots::after{display:inline-block;width:1.2em;text-align:left;animation:dots 1.2s steps(4,end) infinite;content:""}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+</style>
+</head>
+<body>
+
+<div id="pane"></div>
+
+<div id="boot">
+  <div class="big">Starting tonight's tournament<span class="dots"></span></div>
+  <div class="sub" id="bootmsg">Loading the server into your browser &mdash; about 3&nbsp;MB, once.</div>
+</div>
+
+<script src="wasm_exec.js"></script>
+<script>
+/* ── which of the two this page is ─────────────────────────────────
+   The path decides, so the links are clean enough to text to someone.
+   The build publishes this same file at /controller/ and /screens/ with
+   a <base href="../"> so every relative asset still resolves to the
+   site root -- <base> changes URL resolution, never location, so the
+   pathname read here is the real one. ?panes= is still honoured for
+   any link that already exists. */
+const MODE = (function () {
+  const p = location.pathname.replace(/\/+$/, "");
+  if (/\/screens$/i.test(p)) return "board";
+  if (/\/controller$/i.test(p)) return "control";
+  const q = new URLSearchParams(location.search).get("panes");
+  return q === "board" ? "board" : "control";
+})();
+
+const PAGE = {
+  control: {src: "control2.html", title: "Third Coast — controller"},
+  board:   {src: "board.html",    title: "Third Coast — screens"},
+}[MODE];
+
+document.body.dataset.mode = MODE;
+document.title = PAGE.title;
+
+/* ── one tournament across two tabs ────────────────────────────────
+   The controller and the screens are separate URLs, so each would
+   otherwise boot its own WebAssembly server and its own event log --
+   two independent nights in one browser, where reporting a winner in
+   one tab did nothing visible in the other. That is the opposite of
+   what this system is for, so the tabs are linked.
+
+   BroadcastChannel is same-origin and needs no server, which is the
+   whole point on a static host.
+
+   THE CONTROLLER IS ALWAYS THE HOST. It owns the wasm instance, and the
+   screens tab asks it for every /api/ call instead of running a second
+   engine. That direction is deliberate rather than first-come: the
+   controller is where mutations originate, so it is the tab whose
+   closing SHOULD end the night, and the one a viewer is least likely to
+   close by accident.
+
+   The screens tab still works alone. If no controller answers, it boots
+   its own server and seeds itself exactly as before -- so the screens
+   link handed over on its own is not a broken page. It keeps listening,
+   and if a controller appears later it hands over: drops its own engine
+   and reloads its frame against the host's state. Opening the two links
+   in either order therefore converges on the same place. */
+var CH = null;
+try { CH = new BroadcastChannel("thirdcoast-demo-v1"); } catch (e) { /* no channel: each tab stands alone */ }
+var ME = Math.random().toString(36).slice(2);
+var ROLE = null;            // "host" once our wasm is serving, "client" once proxying
+var reqSeq = 0;
+var waiting = new Map();    // id -> {resolve, timer}
+
+function chSend(msg) { if (CH) { msg.from = ME; CH.postMessage(msg); } }
+
+/* A host answers for as long as it is the page that booted the engine. */
+function becomeHost() {
+  ROLE = "host";
+  chSend({t: "host-hello"});
+}
+
+if (CH) CH.onmessage = function (ev) {
+  var d = ev.data || {};
+  if (d.from === ME) return;
+
+  if (d.t === "who-is-host" && ROLE === "host") { chSend({t: "host-hello"}); return; }
+
+  /* A controller announcing itself while we are running our own engine:
+     hand over rather than keep a second, diverging night alive. */
+  if (d.t === "host-hello" && MODE === "board" && ROLE === "host") { handOverToHost(); return; }
+  if (d.t === "host-hello") { sawHost = true; return; }
+
+  if (d.t === "req" && ROLE === "host") {
+    var out;
+    try { out = window.tcAPI(d.method, d.path, d.body || ""); }
+    catch (e) { out = {status: 500, body: JSON.stringify({error: String(e)})}; }
+    chSend({t: "res", id: d.id, to: d.from, status: out.status, body: out.body});
+    return;
+  }
+
+  if (d.t === "res" && d.to === ME) {
+    var w = waiting.get(d.id);
+    if (!w) return;
+    waiting.delete(d.id);
+    clearTimeout(w.timer);
+    w.resolve({status: d.status, body: d.body});
+    return;
+  }
+
+  /* The host is going away. Whoever is left starts a night of its own
+     rather than sitting there answering nothing. */
+  if (d.t === "host-bye" && ROLE === "client") { location.reload(); }
+};
+
+var sawHost = false;
+function findHost(ms) {
+  if (!CH) return Promise.resolve(false);
+  sawHost = false;
+  chSend({t: "who-is-host"});
+  return new Promise(function (r) { setTimeout(function () { r(sawHost); }, ms); });
+}
+
+addEventListener("pagehide", function () { if (ROLE === "host") chSend({t: "host-bye"}); });
+
+/* ── serving one /api/ call, whoever owns the engine ───────────────
+   Always a promise: api-shim.js has always awaited its reply, so the
+   framed pages cannot tell the difference between an answer from this
+   tab's own wasm and one fetched from the controller's. */
+function serve(method, path, body) {
+  if (ROLE === "host") {
+    try { return Promise.resolve(window.tcAPI(method, path, body || "")); }
+    catch (e) { return Promise.resolve({status: 500, body: JSON.stringify({error: String(e)})}); }
+  }
+  if (!CH) return Promise.resolve({status: 503, body: '{"error":"no engine"}'});
+  var id = ++reqSeq;
+  return new Promise(function (resolve) {
+    /* If the controller tab has gone without a host-bye -- closed by the
+       OS, crashed, put to sleep -- a request simply never comes back.
+       Answering 503 lets the framed page's own retry keep the board on
+       screen rather than hanging forever on a dead promise. */
+    var timer = setTimeout(function () {
+      waiting.delete(id);
+      resolve({status: 503, body: '{"error":"the controller tab is not answering"}'});
+    }, 4000);
+    waiting.set(id, {resolve: resolve, timer: timer});
+    chSend({t: "req", id: id, method: method, path: path, body: body || ""});
+  });
+}
+
+/* ── the bridge api-shim.js talks to ───────────────────────────────
+   Installed BEFORE the iframe exists, so the framed page can never poll
+   /api/ before there is something to answer. The shim in each frame
+   looks for exactly this property on window.top and stays completely
+   inert if it is missing -- which is what keeps control2.html unchanged
+   when it is served from the real box at a real tournament. */
+window.tcAPIBridge = true;
+
+window.addEventListener("message", function (ev) {
+  if (ev.origin !== window.location.origin) return;
+  var d = ev.data;
+  if (!d || d.tcRequest !== true) return;
+  var src = ev.source;
+  serve(d.method, d.path, d.body).then(function (out) {
+    src.postMessage(
+      {tcReply: true, id: d.id, status: out.status, body: out.body},
+      window.location.origin
+    );
+  });
+});
+
+/* Seeding runs only in the tab that owns the engine, so it can stay
+   synchronous against its own wasm. */
+function api(method, path, body) {
+  var r = window.tcAPI(method, path, body || "");
+  if (r.status >= 400) throw new Error(method + " " + path + " -> " + r.status + " " + r.body.slice(0, 200));
+  return r.body ? JSON.parse(r.body) : null;
+}
+
+var bootEl = document.getElementById("boot");
+var bootMsg = document.getElementById("bootmsg");
+function bootFail(what, detail) {
+  bootEl.classList.remove("done");
+  var big = bootEl.querySelector(".big");
+  big.textContent = "Could not start the demo";
+  big.classList.add("err");
+  bootMsg.innerHTML = what + (detail ? "<br><br><code>" + String(detail).replace(/[<&]/g, "") + "</code>" : "");
+}
+
+async function seed() {
+  var seedDef = await (await fetch("data/demo-seed.json", {cache: "no-store"})).json();
+  var config  = await (await fetch(seedDef.config,        {cache: "no-store"})).text();
+  api("POST", "/api/config", config);
+  /* Courts are assigned one at a time through the real endpoint rather
+     than written into the log directly -- the demo's starting state is
+     therefore reachable by exactly the actions a coordinator would take,
+     and any rule that would reject one of them rejects it here too. */
+  for (var i = 0; i < seedDef.assign.length; i++) {
+    api("POST", "/api/assign", JSON.stringify(seedDef.assign[i]));
+  }
+}
+
+function mountFrame() {
+  var f = document.createElement("iframe");
+  f.title = MODE === "board" ? "screens" : "controller";
+  f.src = PAGE.src;
+  document.getElementById("pane").replaceChildren(f);
+}
+
+async function startWasm() {
+  var go = new Go();
+  var res = await WebAssembly.instantiateStreaming(fetch("demo.wasm"), go.importObject);
+  go.run(res.instance);                       // blocks in Go; deliberately not awaited
+  /* main() sets tcReady once tcAPI is installed. */
+  for (var i = 0; i < 200 && !window.tcReady; i++) {
+    await new Promise(function (r) { setTimeout(r, 25); });
+  }
+  if (window.tcBootError) throw new Error(window.tcBootError);
+  if (!window.tcReady) throw new Error("the wasm server never signalled ready");
+}
+
+/* Handing over: this screens tab was running its own night, and a
+   controller has just come up. Drop ours and re-mount the frame so the
+   board reads the controller's state instead. The wasm instance we
+   started is left where it is -- there is no way to unload one, and it
+   simply stops being asked anything. */
+function handOverToHost() {
+  ROLE = "client";
+  bootEl.classList.remove("done");
+  bootMsg.textContent = "Connecting to the controller…";
+  setTimeout(function () {
+    mountFrame();
+    bootEl.classList.add("done");
+  }, 300);
+}
+
+(async function boot() {
+  try {
+    /* The screens tab prefers a controller's engine to its own. Half a
+       second is long enough for a tab that is already up to answer, and
+       short enough not to read as a slow page when nothing does. */
+    if (MODE === "board" && await findHost(500)) {
+      ROLE = "client";
+      bootMsg.textContent = "Connecting to the controller…";
+      mountFrame();
+      bootEl.classList.add("done");
+      return;
+    }
+
+    await startWasm();
+    bootMsg.textContent = "Dealing tonight's brackets…";
+    await seed();
+    becomeHost();
+    mountFrame();
+    bootEl.classList.add("done");
+  } catch (e) {
+    if (String(e).indexOf("WebAssembly") >= 0) {
+      bootFail("This browser could not start the WebAssembly server. A current Chrome, Safari, Firefox or Edge will.", e);
+    } else {
+      bootFail("Something went wrong bringing the tournament up.", e);
+    }
+  }
+})();
+</script>
+</body>
+</html>

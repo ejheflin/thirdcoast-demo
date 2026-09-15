@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The championship screen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  THE ONE MATCH THAT IS NOT A BRACKET. The grand final is the winners
+  final's winner against the losers final's winner, so it belongs to
+  neither tree — which is why bracket-split.html holds one format for
+  every round of the night and both brackets end in a "to final" arrow
+  pointing here.
+
+  It is also the only screen that shows a single match, so it can afford
+  to say things a bracket card cannot: how each side got here. In the
+  captured tournament that is Notorious DIG at 5-0, undefeated through
+  the winners bracket, against Beach Please at 3-2, who lost in Winners
+  R2 and won three straight on the losers side to come back. That is the
+  story of the night and it is one line of arithmetic away from the data.
+
+  Two states, both of which have to work: PLAYING, and SETTLED — the
+  moment the board exists for.
+
+  Ground colours carry the same meaning as everywhere else: the finalist
+  out of the winners bracket sits on winners blue, the one out of the
+  losers bracket on losers pink, so a viewer who has been watching the
+  two screens all night already knows which is which.
+
+  SERVE over HTTP:  cd prototype && python -m http.server 8099
+  Single frame at 1:1:  ?shot=F2&snap=15
+-->
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* ═══ page chrome ═════════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0c;color:#e8e6ef;font-family:"Barlow Condensed",sans-serif;padding-bottom:110px}
+body.shot{padding:0;background:#000;overflow:hidden;height:100vh;display:flex;align-items:center;justify-content:center}
+#nav{position:sticky;top:0;z-index:100;background:rgba(10,10,12,.93);backdrop-filter:blur(14px);
+  border-bottom:1px solid #23232b;padding:10px 20px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#nav .brand{font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#7a7690;margin-right:8px}
+#nav a{color:#c9c5d8;text-decoration:none;font-size:13px;font-weight:600;padding:5px 9px;letter-spacing:.05em;
+  border:1px solid #2c2c36;border-radius:999px;white-space:nowrap;text-transform:uppercase}
+#nav a:hover{background:#1b1b22;border-color:#4a4a58;color:#fff}
+.wrap{max-width:1680px;margin:0 auto;padding:0 20px}
+.intro{padding:34px 0 4px;max-width:1000px}
+.intro h1{font-family:"Archivo Black",sans-serif;font-size:26px;line-height:1.2;text-transform:uppercase}
+.intro p{margin-top:12px;color:#9d99b0;font-size:16px;line-height:1.6}
+.intro em{color:#e8e6ef;font-style:normal}
+.intro code{background:#1b1b22;padding:2px 6px;border-radius:4px;font-size:14px}
+.snaphead{margin:46px 0 0;padding:12px 0 10px;border-bottom:1px solid #24242c;
+  display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+.snaphead h2{font-family:"Archivo Black",sans-serif;font-size:22px;text-transform:uppercase}
+.snaphead .meta{font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#7a7690}
+.vari{padding-top:24px;scroll-margin-top:60px}
+.cap{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+.cap h3{font-size:20px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+.cap h3 b{font-family:"Archivo Black",sans-serif;color:#8E99AB;margin-right:9px}
+.cap .num{font-size:13.5px;letter-spacing:.06em;text-transform:uppercase;color:#ffc400;margin-top:5px}
+.cap .blurb{color:#9d99b0;font-size:15px;line-height:1.5;flex:1 1 430px;min-width:290px}
+.frame{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:12px;
+  border:1px solid #24242c;background:#000;margin-bottom:14px}
+/* fixed 1920x1080 for an outer iframe to scale (rotation-playoff.html),
+   or -- opened directly, a kiosk browser or a laptop tab with nothing
+   wrapping it -- the largest 16:9 box the real viewport fits, letterboxed.
+   The two agree exactly when the viewport itself is 16:9. */
+body.shot .frame{width:min(100vw,177.7778vh);height:min(100vh,56.25vw);border:0;border-radius:0;margin:0}
+#err{margin:30px 0;padding:16px;border:1px solid #4a3d12;background:#1a1607;border-radius:10px;color:#e0c05a;font-size:16px;display:none}
+</style>
+
+<style>
+/* ═══ the board ═══════════════════════════════════════════════ */
+.stage{
+  --ground:#101A2C; --surface:#1A263C; --raised:#24334E; --line:#2B3A54;
+  --ink:#FFFFFF; --dim:#8E99AB;
+  --live:#FF00A0; --live-txt:#FF6EC7; --won:#8CC63F; --pend:#2E9BFF;
+  --time:#FFC400; --mark:#8CC63F; --on-fill:#06070A; --frond:#5FB0FF;
+  --wire:#6E82A8; --wtxt:#6FB6FF; --cut:16px;
+  position:absolute;top:0;left:0;width:1920px;height:1080px;transform-origin:top left;
+  overflow:hidden;background:var(--ground);color:var(--ink);
+  font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums;
+}
+.deco{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.slash{position:absolute;inset:0;background:linear-gradient(115deg,transparent 60%,
+  rgba(255,0,160,.05) 60%,rgba(255,0,160,.05) 74%,transparent 74%)}
+.grove{position:absolute;left:0;bottom:0;width:1920px;height:420px;color:var(--frond);opacity:.10}
+.safe{position:absolute;inset:3.4% 3%;display:flex;flex-direction:column;z-index:2}
+
+.bar{display:flex;align-items:flex-end;justify-content:space-between;gap:30px}
+.venue{font-family:"Archivo Black",sans-serif;font-size:44px;line-height:1;text-transform:uppercase}
+.venue em{font-style:normal;color:var(--mark)}
+.sub,.datel,.pnote{text-transform:uppercase;letter-spacing:.13em;font-weight:600;font-size:18px;color:var(--dim)}
+.sub{margin-top:9px}
+.rt{text-align:right}
+.clock{font-family:"Archivo Black",sans-serif;font-size:38px;line-height:1;color:var(--time)}
+.datel{margin-top:8px}
+.phead{display:flex;align-items:baseline;gap:14px;margin:14px 0 6px}
+.ptitle{font-family:"Archivo Black",sans-serif;font-size:29px;line-height:1;text-transform:uppercase}
+.pill{display:inline-block;background:var(--time);color:var(--on-fill);font-weight:700;font-size:17px;
+  padding:4px 13px 5px;line-height:1;clip-path:polygon(7px 0,100% 0,100% 100%,0 100%,0 7px)}
+.pill.lime{background:var(--won)}
+.pill.pink{background:var(--live);color:var(--ink)}
+
+.body{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+
+/* ── F1: the card, grown up ────────────────────────────────────────
+   The same object the board has shown all night — court slab, two team
+   lines, a rule between — at the size a single match can afford. */
+.big{position:relative;flex:1;min-height:0;display:flex;background:var(--surface);overflow:hidden;
+  clip-path:polygon(0 0,calc(100% - 34px) 0,100% 34px,100% 100%,34px 100%,0 calc(100% - 34px))}
+.big .slab{width:300px;flex:none;background:var(--ct,var(--raised));display:grid;place-items:center}
+.big .cnum{font-family:"Archivo Black",sans-serif;font-size:190px;line-height:1;color:var(--ct-ink,var(--dim))}
+.big .rows{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:0 44px}
+.big .rule{height:3px;background:var(--line);margin:14px 0}
+.row{display:flex;align-items:center;gap:26px;min-width:0}
+.row .sd{font-family:"Archivo Black",sans-serif;font-size:52px;line-height:1;color:var(--dim);flex:none;width:78px}
+.row .who{min-width:0;flex:1}
+.row .nm{font-weight:700;font-size:96px;line-height:1.04;text-transform:uppercase;letter-spacing:.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{margin-top:8px;font-size:24px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.row .meta b{font-weight:700;color:var(--wtxt)}
+.row .meta b.L{color:var(--live-txt)}
+.row.won .nm{color:var(--won)}
+.row.lost{opacity:.42}
+.row .tag{flex:none;font-family:"Archivo Black",sans-serif;font-size:26px;
+  background:var(--won);color:var(--on-fill);padding:8px 16px 9px}
+
+/* ── F2: face to face ──────────────────────────────────────────────
+   Two grounds, each the colour of the bracket its team came out of. */
+.duel{flex:1;min-height:0;display:flex;gap:0;align-items:stretch}
+.side{flex:1;min-width:0;padding:44px 40px;display:flex;flex-direction:column;justify-content:center;position:relative}
+.side.W{background:#1C2F4C;box-shadow:inset 0 5px 0 var(--wtxt)}
+.side.L{background:#2C2344;box-shadow:inset 0 5px 0 var(--live-txt)}
+.side.win{background:#16220C;box-shadow:inset 0 5px 0 var(--won)}
+/* the runner-up, not an also-ran: they finished second in the tournament
+   and their name has to stay readable across the room. A card's losing
+   line can drain to .4 because it is one line among twelve; a whole
+   panel at .45 was unreadable. */
+.side.out{opacity:.72}
+.path{margin-top:22px;font-size:22px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.road{font-size:23px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+.side.W .road{color:var(--wtxt)}
+.side.L .road{color:var(--live-txt)}
+.side.win .road{color:var(--won)}
+.seedbig{font-family:"Archivo Black",sans-serif;font-size:34px;color:var(--dim);margin-top:22px}
+.name{font-weight:700;font-size:92px;line-height:1.03;text-transform:uppercase;margin-top:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side.win .name{color:var(--won)}
+.capn{margin-top:14px;font-size:28px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.record{margin-top:26px;display:flex;align-items:baseline;gap:14px}
+.record .wl{font-family:"Archivo Black",sans-serif;font-size:64px;line-height:1}
+.record .note{font-size:22px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);max-width:330px;line-height:1.35}
+.crown{position:absolute;right:40px;top:38px;font-family:"Archivo Black",sans-serif;
+  font-size:30px;letter-spacing:.06em;text-transform:uppercase;color:var(--won)}
+
+/* the column between them: the court, and the state */
+.mid{flex:none;width:250px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px}
+.mid .court{width:190px;height:190px;background:var(--ct,var(--raised));display:grid;place-items:center}
+.mid .cnum{font-family:"Archivo Black",sans-serif;font-size:120px;line-height:1;color:var(--ct-ink,var(--dim))}
+.mid .ctlabel{font-size:20px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.mid .vs{font-family:"Archivo Black",sans-serif;font-size:40px;color:var(--dim)}
+.mid .state{font-family:"Archivo Black",sans-serif;font-size:24px;padding:8px 18px 9px;
+  background:var(--live);color:var(--ink)}
+.mid .state.done{background:var(--won);color:var(--on-fill)}
+</style>
+</head>
+<body>
+
+<nav id="nav"><span class="brand">the championship screen</span></nav>
+<div class="wrap">
+  <div class="intro">
+    <h1>The one match that is not a bracket</h1>
+    <p>
+      The grand final is the winners final's winner against the losers final's winner, so it
+      belongs to neither tree — which is why both bracket screens hold one format all night and
+      end in a <code>to final</code> arrow pointing here.
+    </p>
+    <p>
+      It is also the only screen showing a <em>single match</em>, so it can say what a bracket
+      card cannot: <em>how each side got here</em>. In the captured tournament that is Notorious
+      DIG at 5–0, undefeated through the winners bracket, against Beach Please at 3–2, who lost
+      in Winners R2 and won three straight on the losers side to come back. That is the story of
+      the night, and it is one line of arithmetic away from the data we already have.
+    </p>
+    <p>
+      Both states have to work — <em>playing</em>, and <em>settled</em>, which is the moment the
+      whole board exists for. Grounds carry the same meaning as everywhere else: the finalist out
+      of the winners bracket sits on winners blue, the one out of the losers bracket on losers
+      pink, so anyone who has been watching the two screens already knows which is which.
+    </p>
+  </div>
+  <div id="err"></div>
+  <div id="sheet"></div>
+</div>
+
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+  <g id="frondg"><path d="M99 196c-2-42 3-79 13-112 3-9 7-18 11-26-8 7-15 16-21 26-9 15-15 33-19 52-1-24 3-45 11-63 8-17 19-30 33-38-16 1-31 8-44 20C70 68 61 85 56 106c-6-19-6-37-1-53 5-17 15-31 29-41-17 3-31 12-42 26-11 15-17 33-18 54-9-16-13-32-11-47 2-16 9-30 21-40-17 5-30 16-38 32-8 15-11 34-8 55 3 21 12 41 26 60l-9 3c-1 0-2 1-2 3 0 1 1 2 3 2l14-2c11 14 24 26 39 38h40z"/></g>
+  <symbol id="palmtree" viewBox="0 0 240 280">
+    <path d="M120 280 C 116 226 110 172 102 124 L 122 118 C 128 170 134 226 142 280 Z"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-138) scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-94)  scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-50)  scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(0)    scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(50)   scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(94)   scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(138)  scale(.62) translate(-99,-196)"/>
+    <circle cx="108" cy="130" r="7"/><circle cx="123" cy="134" r="6"/><circle cx="97" cy="136" r="6"/>
+  </symbol>
+</svg>
+
+<!-- Routes /api/ to the in-browser server when (and only when) this page is
+     framed by demo.html. Completely inert on the real box. -->
+<script src="api-shim.js"></script>
+<script src="board-data.js"></script>
+<script>
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const GROVE = [[40,300],[300,220],[620,270],[980,200],[1240,320],[1600,250]]
+  .map(([x,w]) => { const h = Math.round(w*280/240);
+    return `<use href="#palmtree" x="${x}" y="${420-h}" width="${w}" height="${h}"/>`; }).join("");
+
+/* ── how a finalist got here ────────────────────────────────────────
+   Their record across the whole tournament, which bracket they came out
+   of, and — the part worth saying out loud — how many straight they have
+   won since their loss. A team that lost in Winners R2 and won three on
+   the losers side to reach the final is the story of the night. */
+function road(all, team) {
+  let w = 0, l = 0, streak = 0, lostTo = null, lostIn = null;
+  const beat = [];
+  for (const m of all) {
+    /* the final itself is not part of how they GOT here — counting it
+       gave the runner-up "one loss, in Grand Final", which describes the
+       match being shown rather than the road to it */
+    if (m.side === "F") continue;
+    if (m.status !== "complete" || (m.winner !== 0 && m.winner !== 1)) continue;
+    const i = m.slots.findIndex(s => s.team === team);
+    if (i < 0) continue;
+    if (i === m.winner) { w++; streak++; beat.push(m.slots[1 - m.winner].team); }
+    else { l++; streak = 0; lostTo = m.slots[m.winner].team; lostIn = m.label; }
+  }
+  return {w, l, streak, lostTo, lostIn, beat};
+}
+
+/* The same opponent can appear twice and it is not a glitch — Beach
+   Please beat Bump, Set, Dammit! in the winners semi AND again in the
+   losers final. Printed twice in a row it reads as one, so a repeat is
+   collapsed and counted. Last three names, oldest first. */
+function beaten(list) {
+  const seen = new Map();
+  for (const t of list) seen.set(t, (seen.get(t) || 0) + 1);
+  const order = [...new Set(list)].slice(-3);
+  return order.map(t => seen.get(t) > 1 ? `${t} ×${seen.get(t)}` : t).join(" · ");
+}
+
+function finalists(snap) {
+  const all = snap.bracket.matches;
+  /* a single-elim league has no side "F": its last winners match IS
+     the championship — same fallback rotation.html's screensFor() and
+     playoffnight.html use to find the grand-final match. */
+  const f = all.find(m => m.side === "F")
+    || all.filter(m => m.side !== "L").sort((a, b) => b.level - a.level)[0];
+  if (!f) return null;
+  const of = sl => {
+    const src = all.find(m => m.id === sl.from);
+    const side = src ? (src.side === "L" ? "L" : "W") : "W";
+    return {sl, side, src, r: sl.team ? road(all, sl.team) : null};
+  };
+  return {f, sides: f.slots.map(of), all};
+}
+
+/* winner first, as everywhere else on the board */
+function ordered(F) {
+  const w = F.f.winner;
+  return (w === 0 || w === 1) ? [{...F.sides[w], won: true}, {...F.sides[1 - w], won: false}]
+                              : F.sides.map(s => ({...s, won: null}));
+}
+
+const courtOf = m => {
+  const n = (m.court || m.playedOn) ? courtNo(m.court || m.playedOn) : 0;
+  return {n, c: COURT[n]};
+};
+
+/* the sentence under the record */
+function note(e) {
+  if (!e.r) return "";
+  if (!e.r.l) return "undefeated all night";
+  if (e.r.streak >= 2) return `${e.r.streak} straight since losing to ${e.r.lostTo}`;
+  return `one loss, in ${e.r.lostIn}`;
+}
+
+function shell(p, snap, inner) {
+  const F = finalists(snap);
+  const done = F.f.status === "complete";
+  const live = F.f.status === "on_court";
+  const {c} = courtOf(F.f);
+  return `<div class="stage" ${c ? `style="--ct:${c.hex};--ct-ink:${c.ink}"` : ""}>
+    <div class="deco"><div class="slash"></div>
+      <svg class="grove" fill="currentColor" viewBox="0 0 1920 420">${GROVE}</svg></div>
+    <div class="safe">
+      <div class="bar">
+        <div><div class="venue">Third <em>Coast</em></div>
+          <div class="sub">${esc(p.league)} &nbsp;·&nbsp; ${p.format === "single" ? "single" : "double"} elimination &nbsp;·&nbsp; ${p.teams} teams</div></div>
+        <div class="rt"><div class="clock" data-clock>${clockText()}</div><div class="datel" data-today>${todayLabel()}</div></div>
+      </div>
+      <div class="phead">
+        <span class="ptitle">${done ? "Champion" : "Grand Final"}</span>
+        ${done ? `<span class="pill lime">${esc(p.champion)}</span>`
+          : live ? `<span class="pill pink">on court now</span>`
+                 : `<span class="pill">up next</span>`}
+        <span class="pnote">winners final v losers final</span>
+      </div>
+      ${inner(F, done, live)}
+    </div>
+  </div>`;
+}
+
+/* ── F1 ── the card, grown up ─────────────────────────────────────── */
+function f1(p, snap) {
+  return shell(p, snap, (F, done) => {
+    const {n, c} = courtOf(F.f);
+    const rows = ordered(F).map(e => `
+      <div class="row ${e.won === true ? "won" : e.won === false ? "lost" : ""}">
+        <span class="sd">${e.sl.seed || ""}</span>
+        <div class="who">
+          <div class="nm" data-fit="96">${esc(e.sl.team || "—")}</div>
+          <div class="meta">${esc(e.sl.cap || "")} &nbsp;·&nbsp;
+            <b class="${e.side}">${e.side === "L" ? "losers bracket" : "winners bracket"}</b>
+            &nbsp;·&nbsp; ${e.r ? e.r.w + "–" + e.r.l : ""} &nbsp;·&nbsp; ${esc(note(e))}</div>
+        </div>
+        ${e.won === true ? `<span class="tag">Champion</span>` : ""}
+      </div>`).join(`<div class="rule"></div>`);
+    return `<div class="body"><div class="big">
+      <div class="slab"><span class="cnum">${c ? n : "—"}</span></div>
+      <div class="rows">${rows}</div>
+    </div></div>`;
+  });
+}
+
+/* ── F2 ── face to face ───────────────────────────────────────────── */
+function f2(p, snap) {
+  return shell(p, snap, (F, done, live) => {
+    const {n, c} = courtOf(F.f);
+    const panel = e => `
+      <div class="side ${e.won === true ? "win" : e.side}${e.won === false ? " out" : ""}">
+        ${e.won === true ? `<div class="crown">Champion</div>` : ""}
+        <div class="road">${e.side === "L" ? "out of the losers bracket" : "out of the winners bracket"}</div>
+        <div class="seedbig">${e.sl.seed ? "Seed " + e.sl.seed : ""}</div>
+        <div class="name" data-fit="92">${esc(e.sl.team || "—")}</div>
+        <div class="capn">${esc(e.sl.cap || "")}</div>
+        <div class="record">
+          <span class="wl">${e.r ? e.r.w + "–" + e.r.l : "—"}</span>
+          <span class="note">${esc(note(e))}</span>
+        </div>
+        ${e.r && e.r.beat.length ? `<div class="path">beat ${
+          esc(beaten(e.r.beat))}</div>` : ""}
+      </div>`;
+    const es = ordered(F);
+    return `<div class="body"><div class="duel">
+      ${panel(es[0])}
+      <div class="mid">
+        <div class="court"><span class="cnum">${c ? n : "—"}</span></div>
+        <div class="vs">vs</div>
+        <div class="state ${done ? "done" : ""}">${done ? "Final" : live ? "Live" : "Next"}</div>
+      </div>
+      ${panel(es[1])}
+    </div></div>`;
+  });
+}
+
+/* A single match can afford to size its names to fit rather than pick
+   one size for the whole league — there are only ever two. */
+function fitNames(root) {
+  root.querySelectorAll("[data-fit]").forEach(el => {
+    let px = +el.dataset.fit;
+    el.style.fontSize = px + "px";
+    while (px > 34 && el.scrollWidth > el.clientWidth) {
+      px -= 2;
+      el.style.fontSize = px + "px";
+    }
+  });
+}
+
+const VARIANTS = [
+  {key:"F2", name:"Face to face — CHOSEN", build:f2,
+   blurb:"Two grounds, each the colour of the bracket its team came out of, with the court between them. Room for the seed, the captain, the record and the sentence that makes it a story — \"3 straight since losing to Notorious DIG\". Settled, the winner's ground goes lime and the loser drains."},
+  {key:"F1", name:"The card, grown up", build:f1,
+   blurb:"The same object the board has shown all night — court slab, two team lines, a rule between — at the size one match can afford. Most consistent with every other screen; less room for the road each team took."},
+];
+const SHOTS = [15, 14];
+
+const q = new URLSearchParams(location.search);
+
+/* ?src=night is the real-data path: the grand final AS IT ACTUALLY
+   STANDS right now, one league, straight from the live server (falling
+   back to the captured "night" fixture when nothing answers, same
+   three-source idea board-data.js already uses) — as opposed to the
+   default below, a curated round-by-round progress fixture built for
+   judging the F1/F2 design choice at every stage, which is a fixed
+   review artifact and has no live equivalent. Only this path polls. */
+async function fetchNight() {
+  try {
+    const r = await fetch("/api/brackets", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.json();
+  } catch {
+    const r = await fetch("data/playoff-2026-09-15.json", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+}
+/* Same shape fromNight() builds in bracket-split.html: one league's
+   current state as a single-entry Progress. Champion carries through for
+   real here (bracket-split hardcodes it empty, since its own screens
+   never need it) -- it is what tells shell() the board should read
+   Champion rather than Grand Final. */
+function fromNight(night, name) {
+  const lg = night.leagues.find(l => l.name === name) || night.leagues[0];
+  const round = (lg.rounds || []).find(r => r.level === lg.currentLevel);
+  return {
+    league: lg.name, teams: lg.teams.length, format: lg.format, champion: lg.champion || "",
+    snapshots: [{
+      level: lg.currentLevel,
+      label: round ? round.label : "Round " + lg.currentLevel,
+      phase: lg.matches.some(m => m.status === "on_court") ? "playing" : "settled",
+      bracket: {matches: lg.matches},
+    }],
+  };
+}
+
+/* captured before the shot branch below can wipe .wrap's innerHTML
+   (which #err lives inside) -- otherwise a real error's own handler
+   crashes on a null element instead of showing the message. */
+const errEl = document.getElementById("err");
+
+(q.get("src") === "night" ? fetchNight() : fetch("data/playoff-progress.json", {cache:"no-store"})
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }))
+  .then(p => document.fonts.ready.then(() => p))
+  .then(p => q.get("src") === "night" ? fromNight(p, q.get("league")) : p)
+  .then(p => {
+    if (q.get("shot")) {
+      document.body.className = "shot";
+      document.getElementById("nav").remove();
+      const V = VARIANTS.find(v => v.key === q.get("shot")) || VARIANTS[0];
+      const wrap = document.querySelector(".wrap");
+      wrap.className = "";
+      const snapAt = () => q.get("src") === "night" ? p.snapshots[0]
+        : p.snapshots[Number(q.get("snap") || 15)];
+      document.body.appendChild(errEl);
+      wrap.innerHTML = `<div class="frame"></div>`;
+      const frameEl = wrap.querySelector(".frame");
+      /* .stage renders at native 1920x1080 and needs scaling down to
+         whatever .frame actually rendered at, same as the review sheet
+         below does for every one of its frames -- this branch always
+         used to return before reaching that shared fit(), unnoticed
+         only because .frame was ALSO always fixed at exactly 1920x1080.
+         Now that .frame fits the real viewport (see body.shot .frame
+         above), a real scale is needed. */
+      const fit = () => { const st = frameEl.querySelector(".stage");
+        if (st) st.style.transform = `scale(${frameEl.clientWidth / 1920})`; };
+      frameEl.innerHTML = V.build(p, snapAt());
+      fitNames(wrap);
+      fit();
+      addEventListener("resize", fit);
+      if (q.get("src") === "night") {
+        setInterval(async () => {
+          try { p = fromNight(await fetchNight(), q.get("league")); } catch { return; }
+          frameEl.innerHTML = V.build(p, p.snapshots[0]);
+          fitNames(wrap);
+          fit();
+        }, 5000);
+      }
+      return;
+    }
+
+    document.getElementById("sheet").innerHTML = SHOTS.map(si => {
+      const snap = p.snapshots[si];
+      const state = snap.phase === "settled" ? "settled — the moment the board exists for"
+                                             : "playing — the final is on court";
+      return `<div class="snaphead" id="s${si}">
+          <h2>${esc(state)}</h2>
+          <div class="meta">snapshot ${si} · ${esc(snap.label)}</div></div>`
+        + VARIANTS.map(V => `<section class="vari" id="s${si}-${V.key}">
+            <div class="cap">
+              <div><h3><b>${V.key}</b>${esc(V.name)}</h3>
+                <div class="num" data-num="${si}-${V.key}">—</div></div>
+              <div class="blurb">${esc(V.blurb)}</div>
+            </div>
+            <div class="frame">${V.build(p, snap)}</div>
+          </section>`).join("");
+    }).join("");
+
+    fitNames(document);
+    document.querySelectorAll("[data-num]").forEach(el => {
+      const [si, key] = el.dataset.num.split("-");
+      const F = finalists(p.snapshots[+si]);
+      el.textContent = F.sides.map(s =>
+        `${s.sl.team} ${s.r.w}–${s.r.l} (${s.side === "L" ? "losers" : "winners"})`).join("  ·  ")
+        + `  ·  names sized to fit`;
+    });
+
+    document.getElementById("nav").insertAdjacentHTML("beforeend",
+      SHOTS.map(si => `<a href="#s${si}">${p.snapshots[si].phase}</a>`).join(""));
+
+    const fit = () => document.querySelectorAll(".frame .stage").forEach(st =>
+      st.style.transform = `scale(${st.parentElement.clientWidth / 1920})`);
+    addEventListener("resize", fit); fit();
+  })
+  .catch(e => {
+    const el = errEl;
+    el.style.display = "block";
+    el.innerHTML = q.get("src") === "night"
+      ? `<b>Could not load the night</b> (${esc(e.message)}).<br>
+         Neither the live server's <code>/api/brackets</code> nor the captured fixture
+         answered — serve one of them over HTTP.`
+      : `<b>Could not load data/playoff-progress.json</b> (${esc(e.message)}).<br>
+      Generate it with
+      <code>go run ./prototype/tools/playofffixture -progress "Coed 4s Upper Rec"</code>
+      and serve over HTTP.`;
+  });
+
+/* keep the clock in the header honest -- see startClock in board-data.js */
+startClock();
+</script>
+</body>
+</html>

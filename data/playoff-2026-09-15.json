@@ -1,0 +1,1943 @@
+{
+  "date": "2026-09-15",
+  "kind": "playoff_night",
+  "syncedAt": "2026-08-27T09:00:00Z",
+  "leagues": [
+    {
+      "name": "Coed 4s A",
+      "format": "double",
+      "rounds": [
+        {
+          "label": "Winners R1",
+          "side": "W",
+          "level": 1
+        },
+        {
+          "label": "Winners Semi",
+          "side": "W",
+          "level": 2
+        },
+        {
+          "label": "Winners Final",
+          "side": "W",
+          "level": 3
+        },
+        {
+          "label": "Losers R1",
+          "side": "L",
+          "level": 2
+        },
+        {
+          "label": "Losers R2",
+          "side": "L",
+          "level": 3
+        },
+        {
+          "label": "Losers R3",
+          "side": "L",
+          "level": 4
+        },
+        {
+          "label": "Losers Final",
+          "side": "L",
+          "level": 5
+        },
+        {
+          "label": "Grand Final",
+          "side": "F",
+          "level": 6
+        }
+      ],
+      "matches": [
+        {
+          "id": 1,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Carolina Beach Bumpers",
+              "cap": "Ashton",
+              "seed": 1,
+              "kind": "seed"
+            },
+            {
+              "team": "Team Jacob",
+              "cap": "Mark J.",
+              "seed": 8,
+              "kind": "seed"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 2,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Holy Blockamole Infinity",
+              "cap": "Bryan M.",
+              "seed": 4,
+              "kind": "seed"
+            },
+            {
+              "team": "Toodles",
+              "cap": "Michael L.",
+              "seed": 5,
+              "kind": "seed"
+            }
+          ],
+          "winner": 1
+        },
+        {
+          "id": 3,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Score Check",
+              "cap": "Julianna T.",
+              "seed": 2,
+              "kind": "seed"
+            },
+            {
+              "team": "Watermelon",
+              "cap": "Lauren K.",
+              "seed": 7,
+              "kind": "seed"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 4,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Hustle Gang",
+              "cap": "Calvin D.",
+              "seed": 3,
+              "kind": "seed"
+            },
+            {
+              "team": "Bombaclat",
+              "cap": "Aatir A.",
+              "seed": 6,
+              "kind": "seed"
+            }
+          ],
+          "winner": 1
+        },
+        {
+          "id": 5,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Winners Semi",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Carolina Beach Bumpers",
+              "cap": "Ashton",
+              "seed": 1,
+              "from": 1,
+              "kind": "winner"
+            },
+            {
+              "team": "Toodles",
+              "cap": "Michael L.",
+              "seed": 5,
+              "from": 2,
+              "kind": "winner"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 6,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Winners Semi",
+          "status": "on_court",
+          "court": "Court 3",
+          "playedOn": "Court 3",
+          "slots": [
+            {
+              "team": "Score Check",
+              "cap": "Julianna T.",
+              "seed": 2,
+              "from": 3,
+              "kind": "winner"
+            },
+            {
+              "team": "Bombaclat",
+              "cap": "Aatir A.",
+              "seed": 6,
+              "from": 4,
+              "kind": "winner"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 7,
+          "side": "W",
+          "round": 3,
+          "level": 3,
+          "label": "Winners Final",
+          "status": "pending",
+          "slots": [
+            {
+              "team": "Carolina Beach Bumpers",
+              "cap": "Ashton",
+              "seed": 1,
+              "from": 5,
+              "kind": "winner"
+            },
+            {
+              "from": 6,
+              "kind": "winner",
+              "waitOn": "Winner on Court 3"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 8,
+          "side": "L",
+          "round": 1,
+          "level": 2,
+          "label": "Losers R1",
+          "status": "on_court",
+          "court": "Court 2",
+          "playedOn": "Court 2",
+          "slots": [
+            {
+              "team": "Team Jacob",
+              "cap": "Mark J.",
+              "seed": 8,
+              "from": 1,
+              "kind": "loser"
+            },
+            {
+              "team": "Holy Blockamole Infinity",
+              "cap": "Bryan M.",
+              "seed": 4,
+              "from": 2,
+              "kind": "loser"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 9,
+          "side": "L",
+          "round": 1,
+          "level": 2,
+          "label": "Losers R1",
+          "status": "eligible",
+          "slots": [
+            {
+              "team": "Watermelon",
+              "cap": "Lauren K.",
+              "seed": 7,
+              "from": 3,
+              "kind": "loser"
+            },
+            {
+              "team": "Hustle Gang",
+              "cap": "Calvin D.",
+              "seed": 3,
+              "from": 4,
+              "kind": "loser"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 10,
+          "side": "L",
+          "round": 2,
+          "level": 3,
+          "label": "Losers R2",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 8,
+              "kind": "winner",
+              "waitOn": "Winner on Court 2"
+            },
+            {
+              "from": 6,
+              "kind": "loser",
+              "waitOn": "Loser on Court 3"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 11,
+          "side": "L",
+          "round": 2,
+          "level": 3,
+          "label": "Losers R2",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 9,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R1"
+            },
+            {
+              "team": "Toodles",
+              "cap": "Michael L.",
+              "seed": 5,
+              "from": 5,
+              "kind": "loser"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 12,
+          "side": "L",
+          "round": 3,
+          "level": 4,
+          "label": "Losers R3",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 10,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R2"
+            },
+            {
+              "from": 11,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R2"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 13,
+          "side": "L",
+          "round": 4,
+          "level": 5,
+          "label": "Losers Final",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 12,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R3"
+            },
+            {
+              "from": 7,
+              "kind": "loser",
+              "waitOn": "Loser of Winners Final"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 14,
+          "side": "F",
+          "round": 1,
+          "level": 6,
+          "label": "Grand Final",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 7,
+              "kind": "winner",
+              "waitOn": "Winner of Winners Final"
+            },
+            {
+              "from": 13,
+              "kind": "winner",
+              "waitOn": "Winner of Losers Final"
+            }
+          ],
+          "winner": -1
+        }
+      ],
+      "currentLevel": 2,
+      "teams": [
+        {
+          "seed": 1,
+          "name": "Carolina Beach Bumpers",
+          "cap": "Ashton",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 1,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Team Jacob",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 5,
+              "round": "Winners Semi",
+              "side": "W",
+              "opp": "Toodles",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 7,
+              "round": "Winners Final",
+              "side": "W",
+              "waitOn": "Winner on Court 3",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "seed": 2,
+          "name": "Score Check",
+          "cap": "Julianna T.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 3,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Watermelon",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 6,
+              "round": "Winners Semi",
+              "side": "W",
+              "court": "Court 3",
+              "opp": "Bombaclat",
+              "status": "on_court"
+            }
+          ]
+        },
+        {
+          "seed": 3,
+          "name": "Hustle Gang",
+          "cap": "Calvin D.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 4,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Bombaclat",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 9,
+              "round": "Losers R1",
+              "side": "L",
+              "opp": "Watermelon",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 4,
+          "name": "Holy Blockamole Infinity",
+          "cap": "Bryan M.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 2,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Toodles",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 8,
+              "round": "Losers R1",
+              "side": "L",
+              "court": "Court 2",
+              "opp": "Team Jacob",
+              "status": "on_court"
+            }
+          ]
+        },
+        {
+          "seed": 5,
+          "name": "Toodles",
+          "cap": "Michael L.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 2,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Holy Blockamole Infinity",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 5,
+              "round": "Winners Semi",
+              "side": "W",
+              "opp": "Carolina Beach Bumpers",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 11,
+              "round": "Losers R2",
+              "side": "L",
+              "waitOn": "Winner of Losers R1",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "seed": 6,
+          "name": "Bombaclat",
+          "cap": "Aatir A.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 4,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Hustle Gang",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 6,
+              "round": "Winners Semi",
+              "side": "W",
+              "court": "Court 3",
+              "opp": "Score Check",
+              "status": "on_court"
+            }
+          ]
+        },
+        {
+          "seed": 7,
+          "name": "Watermelon",
+          "cap": "Lauren K.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 3,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Score Check",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 9,
+              "round": "Losers R1",
+              "side": "L",
+              "opp": "Hustle Gang",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 8,
+          "name": "Team Jacob",
+          "cap": "Mark J.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 1,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Carolina Beach Bumpers",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 8,
+              "round": "Losers R1",
+              "side": "L",
+              "court": "Court 2",
+              "opp": "Holy Blockamole Infinity",
+              "status": "on_court"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coed 4s Upper Rec",
+      "format": "double",
+      "rounds": [
+        {
+          "label": "Winners R1",
+          "side": "W",
+          "level": 1
+        },
+        {
+          "label": "Winners R2",
+          "side": "W",
+          "level": 2
+        },
+        {
+          "label": "Winners Semi",
+          "side": "W",
+          "level": 3
+        },
+        {
+          "label": "Winners Final",
+          "side": "W",
+          "level": 4
+        },
+        {
+          "label": "Losers R2",
+          "side": "L",
+          "level": 3
+        },
+        {
+          "label": "Losers R3",
+          "side": "L",
+          "level": 4
+        },
+        {
+          "label": "Losers R4",
+          "side": "L",
+          "level": 5
+        },
+        {
+          "label": "Losers R5",
+          "side": "L",
+          "level": 6
+        },
+        {
+          "label": "Losers Final",
+          "side": "L",
+          "level": 7
+        },
+        {
+          "label": "Grand Final",
+          "side": "F",
+          "level": 8
+        }
+      ],
+      "matches": [
+        {
+          "id": 1,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Gold Star for Effort",
+              "cap": "Merilyn V.",
+              "seed": 8,
+              "kind": "seed"
+            },
+            {
+              "team": "What Court Are We On?",
+              "cap": "Bear S.",
+              "seed": 9,
+              "kind": "seed"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 2,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Notorious DIG",
+              "cap": "Connor D.",
+              "seed": 5,
+              "kind": "seed"
+            },
+            {
+              "team": "The Volleybeaners",
+              "cap": "Emanuel N.",
+              "seed": 12,
+              "kind": "seed"
+            }
+          ],
+          "winner": 1
+        },
+        {
+          "id": 3,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Sets Pistols",
+              "cap": "Christina Z.",
+              "seed": 7,
+              "kind": "seed"
+            },
+            {
+              "team": "Offense Only",
+              "cap": "Zhen Y.",
+              "seed": 10,
+              "kind": "seed"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 4,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Winners R1",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Save a Horse, Dig a Volleyball",
+              "cap": "Sarah F.",
+              "seed": 6,
+              "kind": "seed"
+            },
+            {
+              "team": "BLT",
+              "cap": "Sean B.",
+              "seed": 11,
+              "kind": "seed"
+            }
+          ],
+          "winner": 1
+        },
+        {
+          "id": 5,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Winners R2",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Unprotected Sets",
+              "cap": "Chase P.",
+              "seed": 1,
+              "kind": "seed"
+            },
+            {
+              "team": "Gold Star for Effort",
+              "cap": "Merilyn V.",
+              "seed": 8,
+              "from": 1,
+              "kind": "winner"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 6,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Winners R2",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "The Thurmanators",
+              "cap": "David Z.",
+              "seed": 4,
+              "kind": "seed"
+            },
+            {
+              "team": "The Volleybeaners",
+              "cap": "Emanuel N.",
+              "seed": 12,
+              "from": 2,
+              "kind": "winner"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 7,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Winners R2",
+          "status": "on_court",
+          "court": "Court 11",
+          "playedOn": "Court 11",
+          "slots": [
+            {
+              "team": "Beach Please",
+              "cap": "Annie L.",
+              "seed": 2,
+              "kind": "seed"
+            },
+            {
+              "team": "Sets Pistols",
+              "cap": "Christina Z.",
+              "seed": 7,
+              "from": 3,
+              "kind": "winner"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 8,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Winners R2",
+          "status": "eligible",
+          "slots": [
+            {
+              "team": "Bump, set, dammit!",
+              "cap": "Michael G.",
+              "seed": 3,
+              "kind": "seed"
+            },
+            {
+              "team": "BLT",
+              "cap": "Sean B.",
+              "seed": 11,
+              "from": 4,
+              "kind": "winner"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 9,
+          "side": "W",
+          "round": 3,
+          "level": 3,
+          "label": "Winners Semi",
+          "status": "eligible",
+          "slots": [
+            {
+              "team": "Unprotected Sets",
+              "cap": "Chase P.",
+              "seed": 1,
+              "from": 5,
+              "kind": "winner"
+            },
+            {
+              "team": "The Thurmanators",
+              "cap": "David Z.",
+              "seed": 4,
+              "from": 6,
+              "kind": "winner"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 10,
+          "side": "W",
+          "round": 3,
+          "level": 3,
+          "label": "Winners Semi",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 7,
+              "kind": "winner",
+              "waitOn": "Winner on Court 11"
+            },
+            {
+              "from": 8,
+              "kind": "winner",
+              "waitOn": "Winner of Winners R2"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 11,
+          "side": "W",
+          "round": 4,
+          "level": 4,
+          "label": "Winners Final",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 9,
+              "kind": "winner",
+              "waitOn": "Winner of Winners Semi"
+            },
+            {
+              "from": 10,
+              "kind": "winner",
+              "waitOn": "Winner of Winners Semi"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 12,
+          "side": "L",
+          "round": 2,
+          "level": 3,
+          "label": "Losers R2",
+          "status": "pending",
+          "slots": [
+            {
+              "team": "What Court Are We On?",
+              "cap": "Bear S.",
+              "seed": 9,
+              "from": 1,
+              "kind": "loser"
+            },
+            {
+              "from": 8,
+              "kind": "loser",
+              "waitOn": "Loser of Winners R2"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 13,
+          "side": "L",
+          "round": 2,
+          "level": 3,
+          "label": "Losers R2",
+          "status": "pending",
+          "slots": [
+            {
+              "team": "Notorious DIG",
+              "cap": "Connor D.",
+              "seed": 5,
+              "from": 2,
+              "kind": "loser"
+            },
+            {
+              "from": 7,
+              "kind": "loser",
+              "waitOn": "Loser on Court 11"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 14,
+          "side": "L",
+          "round": 2,
+          "level": 3,
+          "label": "Losers R2",
+          "status": "eligible",
+          "slots": [
+            {
+              "team": "Offense Only",
+              "cap": "Zhen Y.",
+              "seed": 10,
+              "from": 3,
+              "kind": "loser"
+            },
+            {
+              "team": "The Volleybeaners",
+              "cap": "Emanuel N.",
+              "seed": 12,
+              "from": 6,
+              "kind": "loser"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 15,
+          "side": "L",
+          "round": 2,
+          "level": 3,
+          "label": "Losers R2",
+          "status": "eligible",
+          "slots": [
+            {
+              "team": "Save a Horse, Dig a Volleyball",
+              "cap": "Sarah F.",
+              "seed": 6,
+              "from": 4,
+              "kind": "loser"
+            },
+            {
+              "team": "Gold Star for Effort",
+              "cap": "Merilyn V.",
+              "seed": 8,
+              "from": 5,
+              "kind": "loser"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 16,
+          "side": "L",
+          "round": 3,
+          "level": 4,
+          "label": "Losers R3",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 12,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R2"
+            },
+            {
+              "from": 13,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R2"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 17,
+          "side": "L",
+          "round": 3,
+          "level": 4,
+          "label": "Losers R3",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 14,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R2"
+            },
+            {
+              "from": 15,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R2"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 18,
+          "side": "L",
+          "round": 4,
+          "level": 5,
+          "label": "Losers R4",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 16,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R3"
+            },
+            {
+              "from": 10,
+              "kind": "loser",
+              "waitOn": "Loser of Winners Semi"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 19,
+          "side": "L",
+          "round": 4,
+          "level": 5,
+          "label": "Losers R4",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 17,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R3"
+            },
+            {
+              "from": 9,
+              "kind": "loser",
+              "waitOn": "Loser of Winners Semi"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 20,
+          "side": "L",
+          "round": 5,
+          "level": 6,
+          "label": "Losers R5",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 18,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R4"
+            },
+            {
+              "from": 19,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R4"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 21,
+          "side": "L",
+          "round": 6,
+          "level": 7,
+          "label": "Losers Final",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 20,
+              "kind": "winner",
+              "waitOn": "Winner of Losers R5"
+            },
+            {
+              "from": 11,
+              "kind": "loser",
+              "waitOn": "Loser of Winners Final"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 22,
+          "side": "F",
+          "round": 1,
+          "level": 8,
+          "label": "Grand Final",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 11,
+              "kind": "winner",
+              "waitOn": "Winner of Winners Final"
+            },
+            {
+              "from": 21,
+              "kind": "winner",
+              "waitOn": "Winner of Losers Final"
+            }
+          ],
+          "winner": -1
+        }
+      ],
+      "currentLevel": 3,
+      "teams": [
+        {
+          "seed": 1,
+          "name": "Unprotected Sets",
+          "cap": "Chase P.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 5,
+              "round": "Winners R2",
+              "side": "W",
+              "opp": "Gold Star for Effort",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 9,
+              "round": "Winners Semi",
+              "side": "W",
+              "opp": "The Thurmanators",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 2,
+          "name": "Beach Please",
+          "cap": "Annie L.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 7,
+              "round": "Winners R2",
+              "side": "W",
+              "court": "Court 11",
+              "opp": "Sets Pistols",
+              "status": "on_court"
+            }
+          ]
+        },
+        {
+          "seed": 3,
+          "name": "Bump, set, dammit!",
+          "cap": "Michael G.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 8,
+              "round": "Winners R2",
+              "side": "W",
+              "opp": "BLT",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 4,
+          "name": "The Thurmanators",
+          "cap": "David Z.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 6,
+              "round": "Winners R2",
+              "side": "W",
+              "opp": "The Volleybeaners",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 9,
+              "round": "Winners Semi",
+              "side": "W",
+              "opp": "Unprotected Sets",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 5,
+          "name": "Notorious DIG",
+          "cap": "Connor D.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 2,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "The Volleybeaners",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 13,
+              "round": "Losers R2",
+              "side": "L",
+              "waitOn": "Loser on Court 11",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "seed": 6,
+          "name": "Save a Horse, Dig a Volleyball",
+          "cap": "Sarah F.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 4,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "BLT",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 15,
+              "round": "Losers R2",
+              "side": "L",
+              "opp": "Gold Star for Effort",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 7,
+          "name": "Sets Pistols",
+          "cap": "Christina Z.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 3,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Offense Only",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 7,
+              "round": "Winners R2",
+              "side": "W",
+              "court": "Court 11",
+              "opp": "Beach Please",
+              "status": "on_court"
+            }
+          ]
+        },
+        {
+          "seed": 8,
+          "name": "Gold Star for Effort",
+          "cap": "Merilyn V.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 1,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "What Court Are We On?",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 5,
+              "round": "Winners R2",
+              "side": "W",
+              "opp": "Unprotected Sets",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 15,
+              "round": "Losers R2",
+              "side": "L",
+              "opp": "Save a Horse, Dig a Volleyball",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 9,
+          "name": "What Court Are We On?",
+          "cap": "Bear S.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 1,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Gold Star for Effort",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 12,
+              "round": "Losers R2",
+              "side": "L",
+              "waitOn": "Loser of Winners R2",
+              "status": "pending"
+            }
+          ]
+        },
+        {
+          "seed": 10,
+          "name": "Offense Only",
+          "cap": "Zhen Y.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 3,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Sets Pistols",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 14,
+              "round": "Losers R2",
+              "side": "L",
+              "opp": "The Volleybeaners",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 11,
+          "name": "BLT",
+          "cap": "Sean B.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 4,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Save a Horse, Dig a Volleyball",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 8,
+              "round": "Winners R2",
+              "side": "W",
+              "opp": "Bump, set, dammit!",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 12,
+          "name": "The Volleybeaners",
+          "cap": "Emanuel N.",
+          "out": false,
+          "lane": "L",
+          "cells": [
+            {
+              "match": 2,
+              "round": "Winners R1",
+              "side": "W",
+              "opp": "Notorious DIG",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 6,
+              "round": "Winners R2",
+              "side": "W",
+              "opp": "The Thurmanators",
+              "status": "complete",
+              "lost": true
+            },
+            {
+              "match": 14,
+              "round": "Losers R2",
+              "side": "L",
+              "opp": "Offense Only",
+              "status": "eligible"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Coed 4s BB",
+      "format": "single",
+      "rounds": [
+        {
+          "label": "Quarterfinal",
+          "side": "W",
+          "level": 1
+        },
+        {
+          "label": "Semifinal",
+          "side": "W",
+          "level": 2
+        },
+        {
+          "label": "Final",
+          "side": "W",
+          "level": 3
+        }
+      ],
+      "matches": [
+        {
+          "id": 1,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Quarterfinal",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Bongos",
+              "cap": "Bradley E.",
+              "seed": 1,
+              "kind": "seed"
+            },
+            {
+              "team": "3 OGs and Bae",
+              "cap": "Johnny W.",
+              "seed": 8,
+              "kind": "seed"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 2,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Quarterfinal",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Twin Peaks",
+              "cap": "Dan F.",
+              "seed": 4,
+              "kind": "seed"
+            },
+            {
+              "team": "Not Good at Volleyball Puns",
+              "cap": "Daniel A.",
+              "seed": 5,
+              "kind": "seed"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 3,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Quarterfinal",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Net Ninjas",
+              "cap": "Katelyn M.",
+              "seed": 2,
+              "kind": "seed"
+            },
+            {
+              "team": "The Vacacioners",
+              "cap": "Phil M.",
+              "seed": 7,
+              "kind": "seed"
+            }
+          ],
+          "winner": 1
+        },
+        {
+          "id": 4,
+          "side": "W",
+          "round": 1,
+          "level": 1,
+          "label": "Quarterfinal",
+          "status": "complete",
+          "slots": [
+            {
+              "team": "Chocolate City",
+              "cap": "Samanda H.",
+              "seed": 3,
+              "kind": "seed"
+            },
+            {
+              "team": "Key Bumps",
+              "cap": "Harley G.",
+              "seed": 6,
+              "kind": "seed"
+            }
+          ],
+          "winner": 0
+        },
+        {
+          "id": 5,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Semifinal",
+          "status": "on_court",
+          "court": "Court 5",
+          "playedOn": "Court 5",
+          "slots": [
+            {
+              "team": "Bongos",
+              "cap": "Bradley E.",
+              "seed": 1,
+              "from": 1,
+              "kind": "winner"
+            },
+            {
+              "team": "Twin Peaks",
+              "cap": "Dan F.",
+              "seed": 4,
+              "from": 2,
+              "kind": "winner"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 6,
+          "side": "W",
+          "round": 2,
+          "level": 2,
+          "label": "Semifinal",
+          "status": "eligible",
+          "slots": [
+            {
+              "team": "The Vacacioners",
+              "cap": "Phil M.",
+              "seed": 7,
+              "from": 3,
+              "kind": "winner"
+            },
+            {
+              "team": "Chocolate City",
+              "cap": "Samanda H.",
+              "seed": 3,
+              "from": 4,
+              "kind": "winner"
+            }
+          ],
+          "winner": -1
+        },
+        {
+          "id": 7,
+          "side": "W",
+          "round": 3,
+          "level": 3,
+          "label": "Final",
+          "status": "pending",
+          "slots": [
+            {
+              "from": 5,
+              "kind": "winner",
+              "waitOn": "Winner on Court 5"
+            },
+            {
+              "from": 6,
+              "kind": "winner",
+              "waitOn": "Winner of Semifinal"
+            }
+          ],
+          "winner": -1
+        }
+      ],
+      "currentLevel": 2,
+      "teams": [
+        {
+          "seed": 1,
+          "name": "Bongos",
+          "cap": "Bradley E.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 1,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "3 OGs and Bae",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 5,
+              "round": "Semifinal",
+              "side": "W",
+              "court": "Court 5",
+              "opp": "Twin Peaks",
+              "status": "on_court"
+            }
+          ]
+        },
+        {
+          "seed": 2,
+          "name": "Net Ninjas",
+          "cap": "Katelyn M.",
+          "out": true,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 3,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "The Vacacioners",
+              "status": "complete",
+              "lost": true
+            }
+          ]
+        },
+        {
+          "seed": 3,
+          "name": "Chocolate City",
+          "cap": "Samanda H.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 4,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "Key Bumps",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 6,
+              "round": "Semifinal",
+              "side": "W",
+              "opp": "The Vacacioners",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 4,
+          "name": "Twin Peaks",
+          "cap": "Dan F.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 2,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "Not Good at Volleyball Puns",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 5,
+              "round": "Semifinal",
+              "side": "W",
+              "court": "Court 5",
+              "opp": "Bongos",
+              "status": "on_court"
+            }
+          ]
+        },
+        {
+          "seed": 5,
+          "name": "Not Good at Volleyball Puns",
+          "cap": "Daniel A.",
+          "out": true,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 2,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "Twin Peaks",
+              "status": "complete",
+              "lost": true
+            }
+          ]
+        },
+        {
+          "seed": 6,
+          "name": "Key Bumps",
+          "cap": "Harley G.",
+          "out": true,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 4,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "Chocolate City",
+              "status": "complete",
+              "lost": true
+            }
+          ]
+        },
+        {
+          "seed": 7,
+          "name": "The Vacacioners",
+          "cap": "Phil M.",
+          "out": false,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 3,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "Net Ninjas",
+              "status": "complete",
+              "won": true
+            },
+            {
+              "match": 6,
+              "round": "Semifinal",
+              "side": "W",
+              "opp": "Chocolate City",
+              "status": "eligible"
+            }
+          ]
+        },
+        {
+          "seed": 8,
+          "name": "3 OGs and Bae",
+          "cap": "Johnny W.",
+          "out": true,
+          "lane": "W",
+          "cells": [
+            {
+              "match": 1,
+              "round": "Quarterfinal",
+              "side": "W",
+              "opp": "Bongos",
+              "status": "complete",
+              "lost": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "queue": [
+    {
+      "league": "Coed 4s A",
+      "match": 9,
+      "label": "Losers R1",
+      "level": 2,
+      "slots": [
+        {
+          "team": "Watermelon",
+          "cap": "Lauren K.",
+          "seed": 7,
+          "from": 3,
+          "kind": "loser"
+        },
+        {
+          "team": "Hustle Gang",
+          "cap": "Calvin D.",
+          "seed": 3,
+          "from": 4,
+          "kind": "loser"
+        }
+      ],
+      "ready": true
+    },
+    {
+      "league": "Coed 4s BB",
+      "match": 6,
+      "label": "Semifinal",
+      "level": 2,
+      "slots": [
+        {
+          "team": "The Vacacioners",
+          "cap": "Phil M.",
+          "seed": 7,
+          "from": 3,
+          "kind": "winner"
+        },
+        {
+          "team": "Chocolate City",
+          "cap": "Samanda H.",
+          "seed": 3,
+          "from": 4,
+          "kind": "winner"
+        }
+      ],
+      "ready": true
+    },
+    {
+      "league": "Coed 4s Upper Rec",
+      "match": 8,
+      "label": "Winners R2",
+      "level": 2,
+      "slots": [
+        {
+          "team": "Bump, set, dammit!",
+          "cap": "Michael G.",
+          "seed": 3,
+          "kind": "seed"
+        },
+        {
+          "team": "BLT",
+          "cap": "Sean B.",
+          "seed": 11,
+          "from": 4,
+          "kind": "winner"
+        }
+      ],
+      "ready": true
+    },
+    {
+      "league": "Coed 4s Upper Rec",
+      "match": 9,
+      "label": "Winners Semi",
+      "level": 3,
+      "slots": [
+        {
+          "team": "Unprotected Sets",
+          "cap": "Chase P.",
+          "seed": 1,
+          "from": 5,
+          "kind": "winner"
+        },
+        {
+          "team": "The Thurmanators",
+          "cap": "David Z.",
+          "seed": 4,
+          "from": 6,
+          "kind": "winner"
+        }
+      ],
+      "ready": true
+    },
+    {
+      "league": "Coed 4s Upper Rec",
+      "match": 14,
+      "label": "Losers R2",
+      "level": 3,
+      "slots": [
+        {
+          "team": "Offense Only",
+          "cap": "Zhen Y.",
+          "seed": 10,
+          "from": 3,
+          "kind": "loser"
+        },
+        {
+          "team": "The Volleybeaners",
+          "cap": "Emanuel N.",
+          "seed": 12,
+          "from": 6,
+          "kind": "loser"
+        }
+      ],
+      "ready": true
+    },
+    {
+      "league": "Coed 4s Upper Rec",
+      "match": 15,
+      "label": "Losers R2",
+      "level": 3,
+      "slots": [
+        {
+          "team": "Save a Horse, Dig a Volleyball",
+          "cap": "Sarah F.",
+          "seed": 6,
+          "from": 4,
+          "kind": "loser"
+        },
+        {
+          "team": "Gold Star for Effort",
+          "cap": "Merilyn V.",
+          "seed": 8,
+          "from": 5,
+          "kind": "loser"
+        }
+      ],
+      "ready": true
+    }
+  ]
+}

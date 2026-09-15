@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Third Coast — board control</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  THE LIVE, CONTROLLER-DRIVEN PLAYOFF-NIGHT BOARD. Same one-iframe,
+  one-src-at-a-time shape as playoffnight.html (which this file started
+  from) -- the difference is WHO decides what's current. playoffnight.html
+  computes its own rotation locally from /api/brackets and never listens to
+  anything else. This file reads GET /api/board instead: the server is now
+  the source of truth for current/hold/slow/announcing, so a controller's
+  next/prev/hold/jump/announce (control2.html) actually changes what THIS
+  page shows, usually within one 5s poll.
+
+  The board still drives its own advance -- it's the one polling and the
+  one arming the dwell timer -- so a board with nobody touching a phone
+  still rotates normally. It just POSTs {"action":"next"} instead of
+  incrementing a local index, so the server (and therefore every OTHER
+  poller, including control2.html's own ribbon) agrees on what's current.
+
+  SERVE over HTTP:  cd prototype && python -m http.server 8099
+-->
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0c}
+body{font-family:"Barlow Condensed",sans-serif;color:#e8e6ef}
+#board{position:fixed;inset:0;width:100vw;height:100vh;border:0;display:block;background:#000}
+#placeholder{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;background:#0a0a0c;text-align:center}
+#placeholder .big{font-family:"Archivo Black",sans-serif;font-size:clamp(22px,4vw,44px);
+  text-transform:uppercase;letter-spacing:.04em;color:#e8e6ef}
+#placeholder .sub{font-size:clamp(14px,1.6vw,20px);color:#7a7690;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<iframe id="board" title="playoff night board"></iframe>
+<div id="placeholder">
+  <div class="big">Waiting for tonight's brackets&hellip;</div>
+  <div class="sub">no leagues yet — checking again shortly</div>
+</div>
+
+<!-- Routes /api/ to the in-browser server when (and only when) this page is
+     framed by demo.html. Completely inert on the real box. -->
+<script src="api-shim.js"></script>
+<script>
+/* Same numbers as rotation-playoff.html/playoffnight.html; "utility" kept
+   only for shape-parity, unused here (no floor/queue screens on a playoff
+   night TV). */
+const DWELL = {T: 16, W: 14, L: 14, F: 22};
+
+function urlFor(s) {
+  const enc = encodeURIComponent(s.league);
+  switch (s.kind) {
+    case "T": return `playoff.html?shot=P4&league=${enc}`;
+    case "W": return `bracket-split.html?shot=S4e&src=night&league=${enc}&side=W`;
+    case "L": return `bracket-split.html?shot=S4e&src=night&league=${enc}&side=L`;
+    case "F": return `bracket-final.html?shot=F2&src=night&league=${enc}`;
+    default: return "about:blank";
+  }
+}
+
+async function fetchBoard() {
+  const r = await fetch("/api/board", {cache: "no-store"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+async function postNext() {
+  const r = await fetch("/api/board", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({action: "next"}),
+  });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+const board = document.getElementById("board");
+const placeholder = document.getElementById("placeholder");
+function showPlaceholder() { placeholder.style.display = "flex"; board.style.display = "none"; }
+function showBoard() { placeholder.style.display = "none"; board.style.display = "block"; }
+
+/* lastKey tracks WHAT is currently loaded in the iframe, so a poll that
+   reports the same current screen never reloads it (which would restart
+   that screen's own live-poll cadence and flicker the iframe for no
+   reason). Only a genuine change -- a controller's next/prev/jump, this
+   file's own dwell timer firing, or an announce starting/stopping --
+   ever sets a new iframe src. */
+let lastKey = null;
+let timer = null;
+
+function applyView(view) {
+  if (view.announcing) {
+    showBoard();
+    const key = "announcing:" + view.announcing.league + ":" + view.announcing.match;
+    if (key !== lastKey) {
+      lastKey = key;
+      const enc = encodeURIComponent(view.announcing.league);
+      const m = view.announcing.match ? `&match=${view.announcing.match}` : "";
+      board.src = `announce-call.html?league=${enc}${m}`;
+    }
+    clearTimeout(timer);
+    timer = null;
+    return;
+  }
+
+  const on = (view.screens || []).filter(s => s.on);
+  if (!on.length) {
+    showPlaceholder();
+    clearTimeout(timer);
+    timer = null;
+    lastKey = null;
+    return;
+  }
+  showBoard();
+
+  const cur = view.current || on[0];
+  const key = cur.league + "|" + cur.kind;
+  if (key !== lastKey) {
+    lastKey = key;
+    board.src = urlFor(cur);
+  }
+
+  if (view.hold) {
+    clearTimeout(timer);
+    timer = null;
+    return;
+  }
+  if (!timer) {
+    const secs = (DWELL[cur.kind] || 16) * (view.slow ? 2 : 1);
+    timer = setTimeout(async () => {
+      timer = null;
+      try { applyView(await postNext()); } catch { /* next regular poll retries */ }
+    }, secs * 1000);
+  }
+}
+
+async function poll() {
+  try {
+    applyView(await fetchBoard());
+  } catch {
+    /* server unreachable for a beat -- leave whatever's already showing
+       alone rather than flashing the placeholder over a real screen. */
+  }
+  setTimeout(poll, 5000);
+}
+poll();
+
+/* ── demo mode ────────────────────────────────────────────────────
+   Only runs when THIS page was reached via gamenight.html's own demo
+   poll (?demo=1 on the URL) -- a real playoff night is someone loading
+   this file directly, with no query string, and that manual, unchanged
+   path must behave exactly as it does today: this whole block is
+   skipped entirely, not just a no-op once running. Independent of, and
+   never interfering with, poll() above (the /api/board rotation poll):
+   same 5000ms self-scheduling shape, its own separate timer. */
+if (new URLSearchParams(location.search).get("demo") === "1") {
+  (async function pollDemo() {
+    try {
+      const r = await fetch("/api/demo", {cache: "no-store"});
+      if (r.ok) {
+        const { on } = await r.json();
+        if (on === false) { location.href = "gamenight.html"; return; }
+      }
+    } catch {
+      /* server unreachable for a beat -- try again next tick */
+    }
+    setTimeout(pollDemo, 5000);
+  })();
+}
+</script>
+</body>
+</html>

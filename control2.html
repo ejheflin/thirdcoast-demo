@@ -1,0 +1,2556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>/control — the tournament runner</title>
+<!-- Pinch-to-zoom is deliberately allowed here (maximum-scale=5, no
+     user-scalable=no) -- reported genuinely useful on a large bracket
+     on the iPad, not just the phone tree overlay, so it's page-wide
+     rather than scoped to one view. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<!-- Add to Home Screen runs it without browser chrome, which is how the
+     venue iPad would hold it: full height, no URL bar over the board strip -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Control">
+<!--
+  /control, SECOND DRAFT — the tournament-night runner.
+
+  Built to the brief in docs/design/control-the-brief.md. The parts of it
+  that shaped this file, in the order they mattered:
+
+  1. THIRTY-SECOND HANDOVER. No typing anywhere. Every action is a tap
+     whose consequence is visible before you make it, and everything is
+     undoable from the acknowledgement.
+
+  2. THE COURT IS THE INDEX. "We won" is the commonest thing said to the
+     controller all night, and the court is the only thing she and the
+     player can both see. Tap the court, tap the winner: two taps, no
+     league, no team names, no reading.
+
+  3. SPATIAL AND STABLE. The courts sit in the venue's own bank order and
+     never move. The tree's columns are its rounds and never reflow. What
+     changes is a match's APPEARANCE, never its position.
+
+  4. THE TREE IS POPULATED BY SEED, so the tree draws SEEDS -- "3 v 11"
+     fits where "Bump, Set, Dammit!" cannot, which is what lets a whole
+     eight-round double-elim bracket sit on a tablet with no scrolling.
+     Names appear in the detail panel, once she has picked something.
+
+  5. LEAGUE CHIPS FADE THE MAP rather than filtering it. A faded court is
+     still selectable -- the fade removes noise, it does not remove the
+     option.
+
+  6. PICKERS ARE BLADES. They sweep in over the layout, take one tap and
+     sweep out, and the thing behind them stays visible so she never
+     loses her place.
+
+  TWO SHAPES, ONE SET OF PARTS. The tablet at the controller table is the
+  primary: courts and tree side by side, because "am I on the right
+  match?" is answered by seeing both highlighted at once. The phone is
+  the walking-around case: the same parts in one column, with the tree as
+  an overlay. No scrolling is needed for the loop in either.
+
+  Interactive on the captured three-league night. Picking a winner really
+  advances the bracket and frees the court; nothing is sent anywhere.
+
+  SERVE over HTTP:  cd prototype && python -m http.server 8099
+-->
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+:root{
+  --ground:#0B1220; --panel:#141C2C; --card:#1B2437; --raised:#232E45; --line:#2C3752;
+  --ink:#FFFFFF; --dim:#8E99AB; --faint:#5D6779;
+  --live:#FF00A0; --live-txt:#FF6EC7; --won:#8CC63F; --pend:#2E9BFF;
+  --time:#FFC400; --on-fill:#06070A; --sand:#D9C9A3;
+  --gap:10px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--ground);color:var(--ink);overflow:hidden;
+  font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums;
+  display:flex;flex-direction:column;
+  /* ON A TOUCHSCREEN, four browser reflexes get in the way of a
+     controller: the URL bar eating the bottom strip, a grey flash on
+     every tap, a long press selecting a team name, and the whole page
+     rubber-banding when she means to scroll a list. */
+  height:100dvh;                     /* 100% is the fallback above */
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none;
+  overscroll-behavior:none;
+}
+button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#inbox,#matrix,#tree{-webkit-overflow-scrolling:touch}
+
+/* ═══ the strip along the top: who am I looking at ═══════════════ */
+/* three columns, so the slicer is centred on the RIBBON rather than on
+   whatever space the mark and the board indicator happen to leave. The
+   side columns shrink before the middle one does, so a fourth league
+   pushes nothing off the screen. */
+#top{flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
+  gap:12px;padding:9px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.tright{display:flex;align-items:center;gap:12px;justify-self:end;min-width:0}
+.mark{font-family:"Archivo Black",sans-serif;font-size:15px;text-transform:uppercase;
+  letter-spacing:.02em;flex:none}
+.mark em{font-style:normal;color:var(--won)}
+#chips{display:flex;gap:7px;justify-content:center;min-width:0;overflow:hidden}
+/* ── THE SLICER ────────────────────────────────────────────────────
+   The 999px pills were the only fully round thing in a design built on
+   hard corners, colour slabs and letterspaced caps -- and the count
+   inside one was a circle at a single digit and an oval at two.
+
+   A broadcast tab strip instead: no shape at all beyond a rule under the
+   league in view, and the count drawn exactly like the counts on the
+   rail's group headers, which already existed. Three other styles were
+   rendered and dropped -- see chips.html.
+
+   The count has to clear the round badge's background, radius AND size:
+   a button lays its content out in an anonymous box that stretches a
+   block-level child to the full height, so patching only the radius
+   turned the badge into a tall yellow bar. */
+#chips.underline{gap:1px}
+#chips.underline .lchip{padding:9px 12px 6px;border-radius:0;background:none;
+  border-bottom:3px solid transparent;color:var(--dim);
+  font-size:13.5px;letter-spacing:.11em}
+#chips.underline .lchip.on{background:none;color:var(--ink);border-bottom-color:var(--pend)}
+#chips.underline .act,#chips.underline .act.clear{display:inline;background:none;padding:0;
+  min-width:0;height:auto;border-radius:0;box-shadow:none;margin-left:7px;
+  font-size:12.5px;color:var(--time)}
+#chips.underline .act.clear{color:var(--faint)}
+
+.lchip{flex:none;padding:9px 13px;border-radius:999px;background:var(--card);
+  font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  white-space:nowrap;box-shadow:inset 0 0 0 2px transparent}
+.lchip.on{background:var(--pend);color:var(--on-fill)}
+/* HOW MANY GAMES ARE PLAYED IS NOT A THING SHE ACTS ON. The chip
+   carries what that league is waiting on her for; a tick means it is
+   running itself. Played out of total still sits over the tree. */
+.lchip .act{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;
+  margin-left:7px;border-radius:999px;background:var(--time);color:var(--on-fill);
+  font-family:"Archivo Black",sans-serif;font-size:11.5px;vertical-align:middle}
+.lchip .act.clear{background:none;color:var(--faint);font-size:13px}
+.lchip.off{opacity:.34}
+.iconbtn{flex:none;width:42px;height:42px;border-radius:11px;background:var(--card);
+  display:grid;place-items:center;font-size:19px}
+/* the labelled variant: same height and the same tap target, just wide
+   enough to say what it opens */
+.iconbtn.lbl{width:auto;padding:0 11px;grid-auto-flow:column;gap:7px;
+  font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.iconbtn.lbl svg{width:15px;height:16px;display:block}
+.tspacer{display:none}
+
+/* ═══ the body: three zones on a tablet, one column on a phone ═══ */
+#body{flex:1;min-height:0;display:grid;gap:var(--gap);padding:var(--gap);
+  grid-template-columns:308px minmax(0,1fr) 316px;grid-template-rows:auto minmax(0,1fr);
+  grid-template-areas:"courts tree rail" "matrix tree rail"}
+/* min-width:0 as well as min-height: a grid 1fr resolves against its
+   content's min-content width, and without this the phone column grew
+   wider than the phone */
+.zone{background:var(--panel);border-radius:14px;min-height:0;min-width:0;
+  display:flex;flex-direction:column;overflow:hidden}
+#zcourts{grid-area:courts}
+#zmatrix{grid-area:matrix}
+#ztree{grid-area:tree}
+#zrail{grid-area:rail}
+.zhead{flex:none;display:flex;align-items:baseline;gap:8px;padding:11px 13px 9px}
+.zhead h2{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+.zhead .n{margin-left:auto;font-family:"Archivo Black",sans-serif;font-size:12px;color:var(--time)}
+.zhead .tog{margin-left:auto;display:flex;gap:0;border-radius:999px;overflow:hidden;
+  box-shadow:inset 0 0 0 1px var(--line)}
+.zhead .tog button{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+  padding:5px 10px;color:var(--faint)}
+.zhead .tog button.on{background:var(--pend);color:var(--on-fill)}
+
+/* ── the courts, in the venue's bank order ───────────────────────
+   A proper 3x5 grid, not three stretched columns: every court is the
+   same horizontal rectangle, and the two in the middle bank sit at the
+   top of their column leaving three rows blank — which is what the
+   venue's floor actually looks like.
+
+   THE PAINT IS A FILL, NOT A BORDER. It is the court's identity and it
+   never moves: the slab on the left is always the real colour, whether
+   the court is busy or free. That leaves the outline free to mean one
+   thing only — this is the one you have selected — so selecting a court
+   never changes its colour. */
+/* minmax(0,...), not bare 1fr: a bare 1fr track refuses to shrink below
+   its content's natural width, so at a phone's width the third column
+   never actually got 1/3 -- it just overflowed the zone, which clips
+   (.zone{overflow:hidden}) rather than scrolls. There is no affordance
+   to reach a clipped court on a real phone at all. */
+#courts{flex:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-rows:repeat(5,52px);gap:6px;padding:0 11px 11px;align-content:start}
+.ct{border-radius:9px;display:flex;overflow:hidden;background:var(--card);padding:0;
+  box-shadow:inset 0 0 0 1px var(--line);transition:opacity .16s,transform .12s}
+.ct .slab{flex:none;width:36px;background:var(--paint);display:grid;place-items:center}
+.ct .n{font-family:"Archivo Black",sans-serif;font-size:17px;line-height:1;color:var(--pink)}
+.ct .b{flex:1;min-width:0;padding:5px 8px;display:flex;flex-direction:column;
+  justify-content:center;gap:1px;text-align:left}
+.ct .sv{font-family:"Archivo Black",sans-serif;font-size:13px;line-height:1.1}
+.ct .el{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+/* a court can carry a future assignment as well as what is on it now:
+   the championship can be promised to court 2 while court 2 is busy */
+.ct .nx{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--pend);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct.free{background:transparent}
+.ct.free .b{color:var(--faint)}
+.ct.free .sv{font-family:"Barlow Condensed",sans-serif;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:600}
+/* court 7 is black: the slab needs the board's sand ring to exist at all */
+.ct.dark .slab{box-shadow:inset 0 0 0 2px rgba(217,201,163,.5)}
+.ct.dimmed{opacity:.3}
+.ct.hl{box-shadow:0 0 0 2px var(--ink),0 0 0 5px rgba(255,255,255,.13);transform:scale(1.015)}
+/* THE MIDDLE BANK IS STAGGERED, because it is staggered on the floor --
+   about half a court down from the two outer banks. `top` on a relative
+   grid item resolves against its own grid area, so this is half a row
+   whatever the row height is, and it leaves `transform` free for the
+   selection scale. */
+.ct.mid,.cm.mid{position:relative;top:50%}
+
+/* ── the team matrix: names live here, so the tree can keep seeds ──
+   Every team still alive, in seed order, with where it is right now. It
+   cross-highlights with the courts and the bracket: tapping court 8
+   lights the match in the tree AND both of its rows here. */
+#matrix{flex:1;min-height:0;overflow:auto;padding:0 11px 11px}
+.tr{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border-radius:8px;
+  background:transparent;text-align:left;margin-bottom:3px;transition:background .12s}
+.tr .sd{font-family:"Archivo Black",sans-serif;font-size:12px;color:var(--faint);
+  min-width:17px;text-align:right}
+.tr .nm{flex:1;min-width:0;font-size:13.5px;font-weight:700;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .dot{flex:none;width:15px;height:15px;border-radius:4px;background:var(--paint)}
+.tr .wh{flex:none;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+/* All mode only: which bracket this row belongs to, since a bare team
+   name no longer says that on its own once every league is on screen
+   together. Same small faint-uppercase treatment as .wh, and .it .s
+   over on the Action Items rail. */
+.tr .lgtag{flex:none;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+.tr.hl{background:var(--raised);box-shadow:inset 0 0 0 2px var(--ink)}
+.tr.two{opacity:.62}
+.tr.gone{opacity:.3}
+.tr.gone .nm{text-decoration:line-through}
+
+/* Team search: its own panel, not the dense many-rows-at-once Teams
+   matrix -- there's room to make both the typing and the reading of it
+   easy at a glance, so this scales #tsBox/#tsResults up well past .tr's
+   base sizing without touching the matrix itself. */
+#tsBox{width:100%;box-sizing:border-box;font-family:inherit;font-size:24px;
+  font-weight:700;padding:16px 18px;margin:2px 0 16px;border-radius:12px;
+  border:0;background:var(--card);color:var(--ink)}
+#tsBox::placeholder{color:var(--faint);font-weight:400}
+#tsResults .tr{padding:16px 14px;margin-bottom:8px;border-radius:12px}
+#tsResults .tr .sd{font-size:19px;min-width:22px}
+#tsResults .tr .nm{font-size:22px}
+#tsResults .tr .wh,#tsResults .tr .lgtag{font-size:15px}
+#tsResults .tr .dot{width:20px;height:20px}
+#tsResults .hint{font-size:17px}
+
+/* ── the tree: rounds are columns, chips are seeds ─────────────────
+   Seeds, because names do not fit: the twelve-team league's losers side
+   is five columns of 97px, which holds a thirty-character name at 6px.
+   Measured, not guessed. The names are in the matrix, and the two
+   highlight each other.
+
+   STATE IS A BAR, NOT A BORDER. Coloured borders on the chips read as if
+   they meant a court; the bar on the left edge is pink for on court and
+   blue for ready, a settled match simply fades, and the outline means
+   one thing only — selected. */
+/* scrollbar-gutter matters here: #tree scrolls, so its own clientWidth
+   shrank by a scrollbar exactly when detailed mode made it tall enough
+   to need one -- and since the layout is measured from that width, the
+   two modes then disagreed by a few pixels and the lock came undone.
+   Reserving the gutter always also stops the content jumping sideways
+   the moment a scrollbar appears. */
+#tree{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:0 11px 12px;
+  position:relative}
+/* ── WHAT IS THIS MATCH WAITING FOR ────────────────────────────────
+   Dotted, because a dotted line is a thing that has not happened yet,
+   and in the pending blue, which already means exactly that. It lives
+   inside the scroll content so it travels with the chips, and it is the
+   first child so every chip paints over it. */
+/* #deps by id when one league fills the whole pane; .deps by class,
+   one per open All-mode accordion section (deps-0, deps-1, …) — ids
+   must stay unique, so All mode can't reuse the bare id for each one. */
+#deps,.deps{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+#deps polyline,.deps polyline{fill:none;stroke:var(--pend);stroke-width:1.5;stroke-dasharray:3 4;
+  stroke-linecap:round;opacity:.9}
+.m.dep{outline:1px dashed var(--pend);outline-offset:2px}
+.lane{margin-bottom:14px}
+.lanelab{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px}
+.lanelab.W{color:var(--pend)}.lanelab.L{color:var(--live-txt)}.lanelab.F{color:var(--time)}
+.rlabs{display:flex;margin-bottom:4px}
+.rlabs>div{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);text-align:center;white-space:nowrap;overflow:hidden}
+.cols{display:flex;position:relative}
+.col{position:relative}
+
+/* ── All mode: one league's bracket per collapsible section ────────
+   Not an accordion in the strict sense -- opening one doesn't close
+   another, because there's no single "the" league to fall back to
+   once you're viewing every league at once. */
+.treesec{margin-bottom:9px;border-radius:10px;background:var(--card);overflow:hidden}
+.treesechead{display:flex;align-items:center;gap:9px;width:100%;padding:11px 12px;
+  text-align:left;font-family:inherit;color:inherit}
+.treesechead .car{flex:none;width:12px;color:var(--faint);font-size:11px}
+.treesechead .nm{flex:1;min-width:0;font-size:13.5px;font-weight:700;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.treesechead .cnt{flex:none;font-size:11px;color:var(--faint)}
+.treesec.open .treesechead{padding-bottom:8px}
+/* deliberately NOT position:relative -- the .deps svg inside is
+   position:absolute and drawDeps()'s geometry is computed against
+   #tree's own bounding rect (see drawDeps()), which only lines up if
+   #tree stays the nearest positioned ancestor for every section's
+   overlay, not each section individually. */
+.treesecbody{padding:0 12px 12px}
+.treesec:not(.open) .treesecbody{padding:0}
+
+/* ── THE TREE FITS ITS PANE ────────────────────────────────────────
+   The columns are MEASURED, not assumed: drawTree divides the pane it
+   actually has between the rounds of each lane, so a lane fills the
+   width instead of leaving a hole in landscape or running off the edge
+   in portrait. Widths land inline; the only rule here is that they do
+   not flex afterwards.
+
+   The same arithmetic runs in both modes, so the width is still locked:
+   the toggle changes the height of a chip and nothing else.
+
+   When a lane cannot give every round MINW, its LAST round wraps to a
+   row underneath rather than the whole lane scrolling sideways -- the
+   final is one match and it reads perfectly well below the bracket. */
+.col,.rlabs>div{flex:none;min-width:0}
+.rlabs.wrapped{margin-top:10px}
+.rlabs.wrapped>div{text-align:left;color:var(--dim);display:flex;align-items:center;gap:6px}
+/* an elbow drawn with borders: the arrow glyph is not in the latin
+   subsets these fonts ship, so it rendered as a blank box */
+.rlabs.wrapped>div:before{content:"";flex:none;width:6px;height:8px;
+  border-left:1px solid var(--line);border-bottom:1px solid var(--line);
+  margin-bottom:3px}
+
+.m{position:absolute;left:0;right:0;height:34px;border-radius:7px;background:var(--card);
+  box-shadow:inset 0 0 0 1px var(--line);display:flex;align-items:center;gap:5px;
+  padding:0 6px 0 11px;overflow:hidden;
+  /* top and height are animated by the FLIP in drawTree(); a chip that
+     is merely re-rendered has no old value to move from, so a normal
+     redraw does not animate. */
+  transition:box-shadow .12s, top .26s cubic-bezier(.22,.8,.3,1),
+             height .26s cubic-bezier(.22,.8,.3,1)}
+/* at a locked 150px the two seeds sat hard left with a hole beside
+   them, which read as an accident rather than a layout */
+/* the court sits on the LEFT, where the paint sits on every other card
+   in this design -- and where the detailed chip puts its slab, so the
+   two modes agree about which edge means "court" */
+.m:not(.d){justify-content:center;padding:0 11px 0 28px}
+.m:not(.d) .ctn{position:absolute;left:7px;margin:0}
+/* NO STATE COLOURS AT ALL. Pink and blue both got asked about, which
+   was the answer twice over: the chip already says it without them. A
+   court dot means it is out, dashes mean it is waiting on a feeder, a
+   fade means it is played, and anything else is ready. Nothing to
+   learn, nothing to explain, no key. */
+.m.done{opacity:.4;box-shadow:none}
+.m.done .win{color:var(--won)}
+.m.hl{box-shadow:0 0 0 2px var(--ink),0 0 0 5px rgba(255,255,255,.12);background:var(--raised)}
+.m .s{font-family:"Archivo Black",sans-serif;font-size:14px;line-height:1;min-width:16px;
+  text-align:center}
+.m .vs{font-size:8.5px;padding:0 3px}
+/* the court's NUMBER, not just its colour: the colour says which court
+   to someone who knows the floor, and the number says it to everyone
+   else -- and both together are what every other card in this design
+   shows. Archivo Black at 10.5px clears two digits inside 19px. */
+.m .ctn{margin-left:auto;flex:none;width:19px;height:17px;border-radius:4px;
+  background:var(--paint,var(--raised));display:grid;place-items:center;line-height:1;
+  font-family:"Archivo Black",sans-serif;font-size:10.5px;color:var(--pink,var(--dim))}
+.m .ctn.dark{box-shadow:inset 0 0 0 1.5px rgba(217,201,163,.5)}
+.m .tbd{color:var(--faint)}
+
+/* ── DETAILED: the same tree, spending height instead of width ─────
+   Condensed is seeds because names do not fit ACROSS a five-column
+   lane. Detailed does not fight that: it stacks the two teams and
+   anchors the court on the left, the way every player-facing card
+   does, and the font sizes stay where they were -- the chip got
+   taller, not louder.
+
+   Which means the columns have to stop flexing. At 546px of pane a
+   five-column lane gives each chip 97px, and 97px minus the court slab
+   holds about four letters of a team name. So a column takes a floor
+   width in this mode and a wide lane scrolls sideways: the trade the
+   client opted into, and only in the mode that asks for it. --dw is
+   that floor, tunable with ?dw= while we pick it. */
+.cols{transition:height .26s cubic-bezier(.22,.8,.3,1)}
+/* the content swaps in one frame, so it fades rather than snaps -- and
+   only on a mode change, not on every redraw of the tree */
+@keyframes chipin{from{opacity:0}to{opacity:1}}
+#tree.swap .m>*{animation:chipin .26s ease-out both}
+.m.d{padding:0;gap:0;align-items:stretch;overflow:hidden}
+/* the court anchors the left edge whether or not there is one yet, so
+   the two team rows start at the same x on every chip in the column */
+.m.d .cs{flex:none;width:27px;background:var(--paint,var(--raised));
+  display:grid;place-items:center;color:var(--pink,var(--faint))}
+.m.d .cs b{font-family:"Archivo Black",sans-serif;font-size:12.5px}
+.m.d .cs.none{background:var(--raised);color:var(--faint)}
+.m.d .cs.none b{font-size:11px}
+.m.d .cs.dark{box-shadow:inset 0 0 0 2px rgba(217,201,163,.5)}
+/* A <button> centres its text by UA default, which quietly centred every
+   team name in the chip -- so one name sat indented from the other and
+   the column had no left edge to read down. */
+.m.d .tt{flex:1;min-width:0;display:flex;flex-direction:column;
+  justify-content:center;gap:2px;padding:0 7px;text-align:left}
+.m.d .r{display:flex;align-items:baseline;gap:6px;min-width:0}
+.m.d .r .s{font-family:"Archivo Black",sans-serif;font-size:12px;line-height:1;
+  color:var(--faint);flex:none;min-width:14px;text-align:right}
+.m.d .r .nm{flex:1;min-width:0;font-size:11.5px;font-weight:700;line-height:1.15;
+  text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m.d .r.win .s,.m.d .r.win .nm{color:var(--won)}
+.m.d .r.wait .nm{font-weight:600;color:var(--faint)}
+/* the same divider the player cards use between two teams: a hairline
+   with the vs mark sitting in it */
+.m.d .dv{display:flex;align-items:center;gap:5px;margin:1px 0}
+.m.d .dv:before,.m.d .dv:after{content:"";flex:1;height:1px;background:var(--line)}
+.m.d .dv i{font-style:normal;font-size:8px;letter-spacing:.07em;
+  text-transform:lowercase;color:var(--pend)}
+
+/* ── the rail: what is selected, then what is waiting ─────────── */
+#sel{flex:none;padding:0 11px 11px}
+.selcard{background:var(--card);border-radius:12px;padding:11px 12px 12px}
+.selmeta{display:flex;gap:7px;align-items:center;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.selmeta .lg{color:var(--pend)}
+.selmeta .ct{margin-left:auto;font-family:"Archivo Black",sans-serif;color:var(--time)}
+.side{display:flex;align-items:center;gap:8px;width:100%;padding:11px 10px;border-radius:9px;
+  background:var(--raised);margin-bottom:6px;text-align:left}
+.side .sd{font-family:"Archivo Black",sans-serif;font-size:15px;color:var(--faint);min-width:18px}
+.side .nm{font-size:17px;font-weight:700;text-transform:uppercase;line-height:1.1;flex:1;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side .tick{font-size:11px;letter-spacing:.1em;color:var(--faint)}
+.side.won{background:var(--won);color:var(--on-fill)}
+.side.won .sd,.side.won .tick{color:rgba(6,7,10,.6)}
+.side.lost{opacity:.4}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.act{flex:1;min-width:88px;padding:11px 9px;border-radius:9px;background:transparent;
+  box-shadow:inset 0 0 0 2px var(--line);color:var(--dim);
+  font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;min-height:44px}
+.act.pri{background:var(--won);color:var(--on-fill);box-shadow:none}
+.act.mic{background:var(--time);color:var(--on-fill);box-shadow:none}
+.hint{padding:22px 14px;color:var(--faint);font-size:14px;line-height:1.5;text-align:center}
+.hint b{color:var(--dim);display:block;font-size:15px;margin-bottom:5px}
+
+#queue{flex:1;min-height:0;overflow:auto;padding:0 11px 11px}
+.q{background:var(--card);border-radius:11px;padding:9px 10px 10px;margin-bottom:7px}
+.qm{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+.qm .lg{color:var(--pend)}
+.qt{font-size:15px;font-weight:700;text-transform:uppercase;line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qgo{width:100%;margin-top:8px;padding:11px;border-radius:9px;background:var(--won);
+  color:var(--on-fill);font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  min-height:44px}
+.qgo .c{font-family:"Archivo Black",sans-serif;font-size:16px}
+.qgo.none{background:var(--raised);color:var(--faint)}
+
+/* ═══ the bottom strip: the board itself, and config ═════════════ */
+#foot{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;
+  background:var(--panel);border-top:1px solid var(--line)}
+#ribbon{flex:none;display:flex;gap:6px;padding:8px 12px 0;overflow-x:auto;background:var(--panel)}
+.ribicon{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 10px;border-radius:9px;background:var(--card);min-width:46px}
+.ribicon .k{font-family:"Archivo Black",sans-serif;font-size:13px;line-height:1}
+.ribicon .lg{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+  white-space:nowrap}
+.ribicon.on{background:var(--pend);color:var(--on-fill)}
+.ribicon.on .lg{color:var(--on-fill);opacity:.75}
+#foot .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+#foot .scr{font-size:14px;font-weight:700;text-transform:uppercase;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:250px}
+#foot .sp{flex:1}
+.fbtn{padding:10px 13px;border-radius:9px;background:var(--card);font-size:12.5px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;min-height:42px}
+.fbtn.on{background:var(--time);color:var(--on-fill)}
+
+/* ═══ popovers ══════════════════════════════════════════════════════
+   Two levels: the match bubble, and a picker opened from inside it.
+   Both attach to the thing that was tapped and open to the RIGHT, or
+   flip left when there is no room. This replaces the sweep-in blade for
+   picking a court — a picker should appear next to what it is picking
+   for, not at the edge of the screen. */
+.pop{position:fixed;z-index:66;background:var(--card);border-radius:13px;
+  box-shadow:0 20px 50px rgba(0,0,0,.55),inset 0 0 0 1px var(--line);overflow:hidden;
+  opacity:0;transform:translateY(6px) scale(.97);pointer-events:none;
+  transition:opacity .13s,transform .13s}
+.pop.in{opacity:1;transform:none;pointer-events:auto}
+#bub2{z-index:67}
+/* Tap-away-to-close already works, but a fingertip on glass keeps
+   wanting a literal target -- reported from real iPhone use, not
+   tablet. Sits INSIDE the card's own corner (.pop clips its overflow)
+   rather than straddling the border, so the card never has to grow to
+   make room for it. */
+.xclose{position:absolute;top:7px;right:7px;z-index:5;width:23px;height:23px;
+  border-radius:50%;background:rgba(6,7,10,.38);color:var(--ink);
+  display:grid;place-items:center;font-size:13px;line-height:1}
+.xclose:active{background:rgba(6,7,10,.58)}
+.pophead{padding:10px 12px 2px;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--dim)}
+/* the court picker IS the map: same three banks, same paint, so the
+   choice is made in the same shape she reads the floor in */
+.cmap{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(5,38px);
+  gap:5px;padding:9px 11px 12px}
+.cm{border-radius:8px;display:flex;align-items:center;gap:5px;padding:0 0 0 0;overflow:hidden;
+  background:var(--card);box-shadow:inset 0 0 0 1px var(--line)}
+.cm .s{flex:none;width:26px;align-self:stretch;background:var(--paint);display:grid;place-items:center}
+.cm .s span{font-family:"Archivo Black",sans-serif;font-size:13px;color:var(--pink)}
+.cm .l{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+  white-space:nowrap;overflow:hidden}
+/* A COURT IN USE IS HATCHED, NOT JUST FADED. Fade alone had to be deep
+   enough to read as "unavailable", which took the paint down with it --
+   and the paint is how she knows which court it is. So the fade comes
+   back up and diagonal black stripes carry "in use" instead. The number
+   stays above the hatch: still selectable, because a future match can be
+   promised to a busy court. */
+.cm.busy{opacity:.66}
+.cm.busy .s{position:relative}
+.cm.busy .s:after{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(45deg,
+    rgba(0,0,0,.82) 0 2px, rgba(0,0,0,0) 2px 5px)}
+.cm.busy .s span{position:relative;z-index:1}
+.cm.busy .l{color:var(--dim)}
+.cm.here{box-shadow:0 0 0 2px var(--ink)}
+.cm.dark .s{box-shadow:inset 0 0 0 2px rgba(217,201,163,.5)}
+/* NOT A COURT -- deliberately the opposite treatment from every .cm cell
+   above: no --paint fill (there is no court identity to carry), a dashed
+   outline instead of the solid inset line every real cell gets, and the
+   same muted faint/dim text an .iconbtn or .popitem uses for a plain
+   utility action. The one thing it borrows from .cm is grid positioning,
+   so it sits in the map without pretending to be part of the floor. */
+.cm.unassign{background:transparent;box-shadow:none;border:1px dashed var(--line)}
+.cm.unassign .s{background:none}
+.cm.unassign .s span{font-family:inherit;font-size:15px;font-weight:700;color:var(--faint)}
+.cm.unassign .l{color:var(--faint)}
+.poplist{padding:2px 10px 10px}
+/* the cards in a popover are the cards in the list -- same shape, so
+   there is nothing new to read */
+.pop .it{background:var(--raised);margin-bottom:5px}
+.pop .it:last-child{margin-bottom:0}
+.popitem{display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;text-align:left}
+/* a tap leaves :hover stuck on iOS, so hover is for pointers only */
+@media (hover:hover){.popitem:hover{background:var(--raised)}}
+.popitem .sd{font-family:"Archivo Black",sans-serif;font-size:12px;color:var(--faint);min-width:34px}
+.popitem .nm{flex:1;min-width:0;font-size:14px;font-weight:700;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.popitem .mn{flex:none;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+
+/* ═══ the match bubble ═════════════════════════════════════════════
+   The player screens' card, shrunk: the court's colour and number
+   anchored on the left, the two names stacked with the rule between
+   them. It is instantly recognisable because it is the same object the
+   television has been showing all night.
+
+   Tap a name to make it the winner. Tap the court to change it. One
+   button underneath, and it is the microphone. */
+#bub{width:300px}
+#bub .top{display:flex;min-height:96px}
+#bub .cslab{flex:none;width:66px;background:var(--paint,var(--raised));display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:2px}
+#bub .cslab .n{font-family:"Archivo Black",sans-serif;font-size:26px;line-height:1;
+  color:var(--pink,var(--dim))}
+#bub .cslab .lab{font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--pink,var(--dim));opacity:.7}
+#bub .who{flex:1;min-width:0;padding:9px 11px;display:flex;flex-direction:column;justify-content:center}
+#bub .bmeta{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+  margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bub .bmeta b{color:var(--pend);font-weight:600}
+#bub .side{display:flex;align-items:baseline;gap:7px;width:100%;padding:5px 4px;border-radius:7px;
+  text-align:left;margin:0}
+#bub .side .sd{font-family:"Archivo Black",sans-serif;font-size:13px;color:var(--faint);min-width:15px}
+#bub .side .nm{font-size:17px;font-weight:700;text-transform:uppercase;line-height:1.1;
+  flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bub .side.won{background:var(--won);color:var(--on-fill)}
+#bub .side.won .sd{color:rgba(6,7,10,.55)}
+#bub .side.lost{opacity:.4}
+#bub .side .tick{margin-left:auto;flex:none;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint)}
+#bub .side.won .tick{color:rgba(6,7,10,.55)}
+/* a slot with no team yet names what it is waiting for, so it is a tap
+   target that points at the blockage rather than dead text */
+#bub .side.tbd .nm{font-size:14px;color:var(--dim)}
+#bub .side.tbd .tick{color:var(--time)}
+#bub .rule{display:flex;align-items:center;gap:7px;margin:3px 0;color:var(--faint);
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase}
+#bub .rule:before,#bub .rule:after{content:"";flex:1;height:1px;background:var(--line)}
+#bub .foot{display:flex;gap:1px;border-top:1px solid var(--line)}
+#bub .foot button{flex:1;padding:13px 8px;font-size:12.5px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--dim);min-height:46px}
+#bub .foot button.mic{color:var(--time)}
+@media (hover:hover){#bub .foot button.mic:hover{background:rgba(255,196,0,.12)}}
+
+/* ═══ the inbox — what is waiting on her ═══════════════════════════ */
+#inbox{flex:1;min-height:0;overflow:auto;padding:0 11px 12px}
+.ihead{display:flex;align-items:baseline;gap:7px;padding:9px 2px 6px;font-size:10.5px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.ihead b{font-family:"Archivo Black",sans-serif;font-size:12px;color:var(--ink)}
+.ihead .c{margin-left:auto;font-family:"Archivo Black",sans-serif;color:var(--time)}
+.it{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:10px;
+  background:var(--card);margin-bottom:6px;text-align:left;cursor:pointer}
+.it .b{flex:1;min-width:0;display:block}
+/* flex, not block, so the two team names truncate INDEPENDENTLY: each
+   .tn gets an ellipsis of its own and the "vs" between them never
+   shrinks. As one line of text it was whichever name came first that
+   survived, and the second could be cut to nothing. */
+.it .t{display:flex;align-items:baseline;min-width:0;
+  font-size:13.5px;font-weight:700;text-transform:uppercase}
+.it .t .tn{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .t .vs{flex:none}
+.it .s{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .s .mins{font-family:"Archivo Black",sans-serif;font-weight:400;color:var(--time)}
+/* the same selection that lights the courts, the tree and the teams
+   lights the list -- a card with no court yet simply never matches a
+   court, which is the honest answer rather than a missing one */
+.it.hl{background:var(--raised);box-shadow:inset 0 0 0 2px var(--ink)}
+
+/* THE COURT CHIP, one fixed size. It was padded text, so court 11 drew
+   a wider chip than court 8 and the column edge wobbled down the list.
+   And it is the LEFT slab now, where it sits on every player-facing
+   card, instead of a second chip on the right that meant something
+   else. Grey TBD when there is no court: a green chip read as done. */
+.it .cc{flex:none;width:36px;height:32px;border-radius:8px;cursor:pointer;
+  background:var(--paint,var(--raised));display:grid;place-items:center;
+  color:var(--pink,var(--dim))}
+.it .cc b,.it .cc i{font-family:"Archivo Black",sans-serif;font-style:normal;font-size:14px}
+.it .cc.tbd{background:var(--raised);box-shadow:inset 0 0 0 1px var(--line)}
+.it .cc.tbd i{font-size:9.5px;letter-spacing:.05em;color:var(--faint)}
+.it .cc.dark{box-shadow:inset 0 0 0 2px rgba(217,201,163,.5)}
+
+/* TWO NAMES ON ONE LINE RAN TOGETHER. The v is its own mark in the
+   pending blue, lowercase, so the line breaks where the eye needs it. */
+.vs{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:.04em;text-transform:lowercase;color:var(--pend);padding:0 5px}
+
+/* what a placeholder is waiting for, pointed at rather than described */
+@keyframes flashring{0%,100%{outline-color:transparent}50%{outline-color:var(--time)}}
+.flash{outline:3px solid transparent;outline-offset:2px;
+  animation:flashring .19s steps(1,end) 5}
+
+/* ═══ blades and sheets ═════════════════════════════════════════ */
+#blade{position:fixed;top:0;right:0;bottom:0;width:min(440px,86vw);background:var(--panel);
+  border-left:1px solid var(--line);z-index:60;transform:translateX(102%);
+  transition:transform .22s cubic-bezier(.22,.8,.3,1);display:flex;flex-direction:column;
+  box-shadow:-24px 0 60px rgba(0,0,0,.45)}
+#blade.in{transform:none}
+#blade .bh{flex:none;display:flex;align-items:center;gap:10px;padding:14px 14px 10px}
+#blade .bh h3{font-family:"Archivo Black",sans-serif;font-size:17px;text-transform:uppercase}
+#blade .bh .x{margin-left:auto;width:40px;height:40px;border-radius:10px;background:var(--card);
+  display:grid;place-items:center;font-size:20px;color:var(--dim)}
+#blade .bb{flex:1;min-height:0;overflow:auto;padding:0 14px 16px}
+.pool{display:flex;flex-wrap:wrap;gap:8px}
+.pchip{width:64px;height:58px;border-radius:11px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;border:2px solid var(--paint);color:var(--paint);
+  font-family:"Archivo Black",sans-serif;font-size:19px}
+.pchip small{font-family:"Barlow Condensed",sans-serif;font-size:9px;letter-spacing:.06em;
+  text-transform:uppercase;font-weight:600;opacity:.8}
+.pchip.dark{border-color:rgba(217,201,163,.5);color:var(--sand)}
+.pchip.taken{opacity:.32}
+.pchip.here{background:var(--paint);color:var(--pink)}
+.trow{display:flex;align-items:center;gap:10px;width:100%;padding:13px 12px;border-radius:10px;
+  background:var(--card);margin-bottom:7px;text-align:left}
+.trow .sd{font-family:"Archivo Black",sans-serif;font-size:15px;color:var(--faint);min-width:20px}
+.trow .nm{font-size:17px;font-weight:700;text-transform:uppercase;flex:1;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow.on{background:var(--pend);color:var(--on-fill)}
+.crow{display:flex;align-items:center;gap:11px;width:100%;padding:13px 12px;border-radius:10px;
+  background:var(--card);margin-bottom:7px;text-align:left;font-size:16px;font-weight:700;
+  text-transform:uppercase}
+.crow .sw{width:30px;height:30px;border-radius:8px;background:var(--raised);flex:none;
+  display:grid;place-items:center;font-size:15px;color:var(--faint)}
+.crow.on .sw{background:var(--won);color:var(--on-fill)}
+#scrim{position:fixed;inset:0;background:rgba(4,7,12,.55);z-index:50;opacity:0;pointer-events:none;
+  transition:opacity .2s}
+#scrim.in{opacity:1;pointer-events:auto}
+/* a popover is not a drawer: dim enough to read as dismissible, light
+   enough that the floor behind it is still legible -- a coordinator
+   picking a court is comparing the popup against the courts. */
+#scrim.soft{background:rgba(4,7,12,.3)}
+
+/* ═══ the acknowledgement, and undo inside it ═══════════════════ */
+#toast{position:fixed;left:50%;bottom:66px;transform:translateX(-50%) translateY(14px) scale(.97);
+  display:flex;align-items:center;gap:12px;background:var(--won);color:var(--on-fill);
+  padding:11px 12px 11px 18px;border-radius:999px;z-index:70;opacity:0;pointer-events:none;
+  transition:opacity .16s,transform .16s;max-width:92vw;
+  box-shadow:0 14px 40px rgba(0,0,0,.45)}
+#toast.up{opacity:1;transform:translateX(-50%) translateY(0) scale(1);pointer-events:auto}
+#toast .t{font-size:15px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#toast .u{flex:none;background:rgba(6,7,10,.16);padding:9px 15px;border-radius:999px;
+  font-size:13px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+
+/* ═══ the phone: same parts, one column, tree as an overlay ═════ */
+#treebtn,#matrixbtn{display:none}
+@media (max-width:1023px){
+  #body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);
+    grid-template-areas:"courts" "rail"}
+  #zmatrix{position:fixed;inset:0;z-index:55;border-radius:0;transform:translateY(101%);
+    transition:transform .24s cubic-bezier(.22,.8,.3,1)}
+  #zmatrix.in{transform:none}
+  #matrixbtn{display:grid}
+  #ztree{position:fixed;inset:0;z-index:55;border-radius:0;transform:translateY(101%);
+    transition:transform .24s cubic-bezier(.22,.8,.3,1)}
+  #ztree.in{transform:none}
+  #zcourts{min-height:232px}
+  #treebtn{display:grid}
+  /* justify-content:flex-start, overriding the centered base rule: with
+     enough leagues (now six chips counting All) the strip is WIDER than
+     a phone, and centering an overflowing flex row clips both ends
+     evenly with no way to scroll to the missing part of either one --
+     confirmed live, the All chip landed mostly off the left edge and
+     stayed there at scrollLeft 0. Pinning the start makes the overflow
+     a normal scrollable list instead: chip 1 is always fully in view,
+     scroll right for the rest. */
+  #chips{order:3;flex-basis:100%;overflow-x:auto;justify-content:flex-start}
+  /* #top was still `display:grid` here -- flex-wrap is a flexbox
+     property and does nothing on a grid container, so #chips's
+     order/flex-basis above were dead code and the league tabs were
+     never actually promoted to their own row. They stayed jammed into
+     the grid's narrow middle "auto" track instead, squeezed to almost
+     nothing by the brand mark and the board/icons cluster on either
+     side -- confirmed on a real iPhone, not just a layout guess.
+     display:flex is what makes flex-wrap (and #chips's order and
+     flex-basis) actually take effect; justify-content:space-between
+     keeps the mark and that cluster pinned to opposite edges on their
+     own row now that chips no longer shares it. */
+  #top{display:flex;flex-wrap:wrap;justify-content:space-between}
+  /* the button row gets a line of its own, with the two overlay buttons
+     pushed left and the search/settings pair pushed right */
+  .tright{order:2;flex-basis:100%;justify-content:flex-start}
+  .tspacer{display:block;flex:1}
+  .zhead .close{margin-left:auto}
+  /* #foot never wraps and body{overflow:hidden} has no scrollbar to
+     offer, so at a phone's width the label ate enough room that "next"
+     and "slower" were pushed past the edge and simply unreachable --
+     not a cropped-but-scrollable inconvenience, a dead button. Dropping
+     the label is what buys the room back without shrinking a single
+     tap target. */
+  #foot .lab,#foot .scr{display:none}
+}
+
+/* ═══ a phone drops the two board strips entirely ═══════════════════
+   Dropping the label above bought the buttons room to exist; it did not
+   make them worth their height. On a phone the ribbon and the footer
+   together cost about 110px of the only screen there is, and the
+   screen they cost it to is the one an operator actually works on --
+   courts and action items.
+
+   The ribbon loses nothing: which screens are in the rotation is also
+   in the gear menu's "Tonight" blade, and the ribbon is the shortcut,
+   not the only way. The footer is a real trade: hold / prev / next /
+   slower have no other call site, so they are gone on a phone. That is
+   deliberate. The controller's device is an iPad, where this rule never
+   fires; a phone is the over-the-shoulder second screen, and driving
+   the board's rotation from one was never the job.
+
+   Two queries, not one: a phone in portrait is caught by width, and a
+   phone in landscape (930x430) by height -- and the height arm is kept
+   under 1023 so that a merely short desktop window keeps its footer. */
+@media (max-width:620px),
+       (max-width:1023px) and (max-height:520px){
+  #ribbon,#foot{display:none}
+
+  /* ── and the page scrolls ──────────────────────────────────────
+     Everywhere else this is a fixed-viewport app: the window is the
+     frame, and the lists inside it scroll. That holds as long as the
+     frame really is the window, which on a phone it is not -- browser
+     chrome comes and goes, an added home-screen bar or a zoomed text
+     size changes the sums, and the failure mode is the one the courts
+     grid comment above already names: a zone clips, and there is no
+     affordance to reach what was clipped.
+
+     So on a phone the document itself is allowed to grow and scroll.
+     The zones size to their content rather than to a share of a height
+     that may not exist, and anything that does not fit is reachable by
+     doing the most obvious thing in the world to it. The inner lists
+     keep their own scrolling for when they are the long part; this is
+     the outer fallback, not a replacement.
+
+     Not extended to the iPad: there the window genuinely is the frame,
+     and a page that scrolls under a coordinator's thumb mid-tournament
+     is worse than one that does not. */
+  html,body{height:auto;min-height:100dvh;overflow:visible}
+  body{overflow-x:hidden;-webkit-overflow-scrolling:touch}
+  #body{height:auto;grid-template-rows:auto auto}
+  .zone{min-height:0;height:auto}
+  #zcourts{min-height:232px}
+  /* these two are fixed full-screen overlays and must stay that way */
+  #zmatrix,#ztree{height:100dvh}
+}
+@media (min-width:1024px){ .zhead .close{display:none} }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <div class="mark">Third <em>Coast</em></div>
+  <div id="chips" class="underline"></div>
+  <div class="tright">
+    <!-- Labelled, and drawn as an actual bracket. These two only exist
+         below 1024px, where their zones are full-screen overlays rather
+         than panes on the grid -- so they are the ONLY way to reach the
+         bracket and the teams list on a phone, and a bare glyph was not
+         telling anyone that. A 4-2-1 tree reads as a bracket at 15px in
+         a way that no single character in the font does. -->
+    <button class="iconbtn lbl" id="treebtn" onclick="showTree(true)" title="bracket">
+      <svg viewBox="0 0 14 16" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M1 2H5M1 6H5M5 2V6M5 4H9M1 10H5M1 14H5M5 10V14M5 12H9M9 4V12M9 8H13"/>
+      </svg><span>Bracket</span>
+    </button>
+    <button class="iconbtn lbl" id="matrixbtn" onclick="showMatrix(true)" title="teams">
+      <svg viewBox="0 0 14 16" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" aria-hidden="true">
+        <path d="M2 3H12M2 8H12M2 13H12"/>
+      </svg><span>Teams</span>
+    </button>
+    <!-- Splits the row below the breakpoint: what OPENS something sits
+         left where a thumb reaches it, what CONFIGURES something sits
+         right, out of the way. Inert above it, where .tright is a tidy
+         cluster of icons at the end of a single-line bar. -->
+    <span class="tspacer"></span>
+    <button class="iconbtn" onclick="openTeamSearch()" title="find a team">⌕</button>
+    <button class="iconbtn" onclick="openConfig()" title="settings">⚙</button>
+  </div>
+</div>
+
+<div id="body">
+  <section class="zone" id="zcourts">
+    <div class="zhead"><h2>Courts</h2><span class="n" id="ctn"></span></div>
+    <div id="courts"></div>
+  </section>
+
+  <section class="zone" id="zmatrix">
+    <div class="zhead"><h2>Teams</h2>
+      <span class="tog"><button id="tgAct" onclick="setTeams(0)">active</button>
+        <button id="tgAll" onclick="setTeams(1)">all</button></span>
+      <button class="iconbtn close" onclick="showMatrix(false)">✕</button></div>
+    <div id="matrix"></div>
+  </section>
+
+  <section class="zone" id="ztree">
+    <div class="zhead"><h2 id="treelab">Bracket</h2>
+      <span class="n" id="trn"></span>
+      <div class="tog" style="margin-left:9px">
+        <button id="tgCond" onclick="setTree('condensed')">condensed</button>
+        <button id="tgDet" onclick="setTree('detail')">detailed</button>
+      </div>
+      <button class="iconbtn close" onclick="showTree(false)">✕</button></div>
+    <div id="tree"></div>
+  </section>
+
+  <section class="zone" id="zrail">
+    <div class="zhead"><h2>Action items</h2><span class="n" id="ibn"></span></div>
+    <div id="inbox"></div>
+  </section>
+</div>
+
+<div id="ribbon"></div>
+<div id="foot" class="footmain">
+  <span class="lab">on the board</span>
+  <span class="scr" id="fscr">—</span>
+  <span class="sp"></span>
+  <button class="fbtn" onclick="step(-1)">◀</button>
+  <button class="fbtn" id="fhold" onclick="hold()">hold</button>
+  <button class="fbtn" onclick="step(1)">▶</button>
+  <button class="fbtn" id="fslow" onclick="slower()">slower</button>
+</div>
+
+<div id="scrim" onclick="closeBlade();closeBubble();showTree(false);showMatrix(false)"></div>
+<div id="blade"><div class="bh"><h3 id="bt"></h3>
+  <button class="x" onclick="closeBlade()">✕</button></div>
+  <div class="bb" id="bb"></div></div>
+
+<div id="bub" class="pop"></div>
+<div id="bub2" class="pop"></div>
+
+<div id="toast"><span class="t" id="tt"></span><button class="u" onclick="undo()">undo</button></div>
+
+<!-- Routes /api/ to the in-browser server when (and only when) this page is
+     framed by demo.html. Completely inert on the real box. -->
+<script src="api-shim.js"></script>
+<script src="board-data.js"></script>
+<script>
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const $ = i => document.getElementById(i);
+const ARG = new URLSearchParams(location.search);   /* not Q: board-data.js owns that */
+
+/* ── state ──────────────────────────────────────────────────────────
+   The only mutable thing in the file. On the real one these are events
+   POSTed to the server; undo appends a compensating event rather than
+   deleting, which is why every action here returns its own reversal. */
+/* the sentinel for S.lg meaning "no single league — show everything
+   that's on the board at once", so every reader of S.lg has one thing
+   to check rather than a bare -1 sprinkled around */
+const ALL = -1;
+/* A client-wide, always-increasing intent counter, seeded from wall-clock
+   time so a freshly reloaded tab's requests always outrank a stale one
+   left over from a previous page load or a background tab. Attached to
+   every absolute-set /api/board action (jump/hold/release/slower/normal/
+   announce/unannounce) so the server can tell a delayed request apart
+   from a fresher one that already landed, and silently ignore the stale
+   one instead of letting it clobber more recent state -- this is what
+   was making the board's rotation and the announce screen appear to get
+   randomly stuck or jump backward on a real, non-instant network. */
+let reqSeq = Date.now();
+const nextSeq = () => ++reqSeq;
+const S = {
+  allTeams: false,
+  leagues: [],       // {name, format, matches, on}
+  lg: 0,             // which league the tree/matrix/rail is scoped to, or ALL
+  /* "detail" (teams stacked, names spelled out) rather than "condensed"
+     (seeds across) as the opening state. Condensed is denser and fits
+     more rounds on a row, but it asks the reader to already know that 6
+     is Bombaclat -- which the coordinator running the night does, and
+     nobody looking over her shoulder does. Detail spends height to spell
+     the names out, and measured at every width this controller is used
+     at, the tree has that height to spare: no overflow in either mode,
+     same 14 chips. ?tree=condensed still opens the other way, and the
+     toggle above the tree switches live. */
+  tree: "detail",    // or "condensed" — teams stacked, or seeds across
+  layout: "floor",   // which arrangement of the panes — see LAYOUTS
+  sel: null,         // {league, id} — the selected match
+  screens: [], current: null, hold: false, slow: false, announcing: null,
+  demoOn: false,     // preview the playoff board on any night — see refreshDemo()
+  undo: null,        // {label, back()}
+  bubOn: null,       // {league, id} — which match the bubble is showing
+  bubAt: null,       // where it was anchored, so a result can redraw it there
+  treeOpen: new Set(), // league names expanded in the All-mode bracket accordion
+};
+
+/* ═══ WHERE THE PANES SIT ══════════════════════════════════════════
+   A layout is two strings. Every zone is attached to the grid by
+   grid-area and nothing else, so rearranging the whole dashboard is a
+   different grid-template-areas -- which is why this is a preset picker
+   and not a drag-and-drop editor. The editor's cost was never the
+   dragging; it was making four panes readable at any size, and three of
+   them are not (the court map is the venue floor at fixed coordinates).
+
+   So: a few arrangements, each one checked, chosen in config. Layouts
+   are Tier 1 in control-surface.md, next to the court colours -- set
+   once for the box, not fiddled with mid-tournament. A volunteer taking
+   over in thirty seconds has to meet the screen she was shown.
+
+   Hiding a zone is part of a layout: the game-night preset has no
+   bracket because on a game night there is no bracket to run, and the
+   wide preset drops the teams list because detailed chips carry names. */
+const LAYOUTS = [
+  {id: "floor", name: "Floor", why: "courts and teams beside the bracket",
+   cols: "308px minmax(0,1fr) 316px", rows: "auto minmax(0,1fr)",
+   areas: '"courts tree rail" "matrix tree rail"',
+   /* Turned upright there is height to spare and width to want, so all
+      three lists stack down one column and the bracket takes everything
+      else -- 716px instead of 400, which is two more rounds on a row. */
+   port: {cols: "308px minmax(0,1fr)", rows: "348px 1fr 1fr",
+          areas: '"courts tree" "matrix tree" "rail tree"'}},
+  {id: "bracket", name: "Bracket", why: "the tree takes the whole width",
+   cols: "308px minmax(0,1fr) 316px", rows: "minmax(0,1fr) minmax(0,348px)",
+   areas: '"tree tree tree" "courts matrix rail"'},
+  /* the tree gets width AND height by stacking the other two beside it.
+     Dropping the teams list is what pays for it -- detailed chips carry
+     the names, so the list is the redundant one. */
+  {id: "tall", name: "Tall bracket", why: "the most room a bracket can have",
+   cols: "minmax(0,1fr) 330px", rows: "minmax(0,1fr) 348px",
+   areas: '"tree rail" "tree courts"', hide: ["zmatrix"]},
+  /* the court map is repeat(3,1fr): give it the whole width and a court
+     card becomes 265px of mostly nothing, so the floor keeps a column
+     and the teams list takes the middle */
+  {id: "game", name: "Game night", why: "no bracket — the floor and the teams",
+   cols: "430px minmax(0,1fr) 340px", rows: "minmax(0,1fr)",
+   areas: '"courts matrix rail"', hide: ["ztree"],
+   port: {cols: "minmax(0,1fr) 340px", rows: "348px minmax(0,1fr)",
+          areas: '"courts rail" "matrix rail"'}},
+];
+const ZONES = ["zcourts", "zmatrix", "ztree", "zrail"];
+const layout = () => LAYOUTS.find(x => x.id === S.layout) || LAYOUTS[0];
+
+/* Inline styles beat media queries, so the grid is only overridden on a
+   tablet; below the breakpoint the phone's own one-column rules stand,
+   and every zone stays reachable there whatever the preset hides. */
+function applyLayout() {
+  const b = $("body"), base = layout();
+  /* the COMPLEMENT of the phone's own media query, not a second
+     threshold that happens to sit next to it: at a fractional viewport
+     width of 1023.5 "min-width:1024" and "max-width:1023" are both
+     false, and the layout fell through the gap between them */
+  const wide = !matchMedia("(max-width:1023px)").matches;
+  /* A tablet on its side and a tablet upright are different boxes, not
+     one box scaled: upright there is height going spare and width worth
+     having. A layout may declare a `port` for that. */
+  const L = wide && matchMedia("(orientation:portrait)").matches && base.port
+    ? {...base, ...base.port} : base;
+  b.style.gridTemplateColumns = wide ? L.cols : "";
+  b.style.gridTemplateRows = wide ? L.rows : "";
+  b.style.gridTemplateAreas = wide ? L.areas : "";
+  ZONES.forEach(z =>
+    $(z).style.display = wide && (L.hide || []).includes(z) ? "none" : "");
+}
+function setLayout(id) {
+  S.layout = id;
+  applyLayout();
+  openConfig();          /* so the tick moves */
+  draw();
+  toast(`layout: ${layout().name}`, null);
+}
+
+const CTS = [...FLOOR.left, ...FLOOR.mid, ...FLOOR.right];
+const paint = n => COURT[n] || {hex: "#334", ink: "#fff", name: "?"};
+const L = () => S.leagues[S.lg];
+const allMatches = () => S.leagues.flatMap(l => l.matches.map(m => ({...m, _lg: l})));
+const findM = (lgName, id) => {
+  const l = S.leagues.find(x => x.name === lgName);
+  return l && l.matches.find(m => m.id === id);
+};
+/* ── what is on each court, and what is promised to it ─────────────
+   A court can hold more than one assignment: the championship can be
+   given court 2 while court 2 is still busy. So a court has a NOW (the
+   earliest assigned match without a result) and a NEXT (anything else
+   assigned to it). Nothing is "sent" — assigning a court is the act,
+   and playing is what a court plus no result means. */
+function courtLoad() {
+  const map = new Map();
+  for (const l of S.leagues)
+    for (const m of l.matches) {
+      if (!m.court || m.status === "complete") continue;
+      const n = courtNo(m.court);
+      if (!map.has(n)) map.set(n, []);
+      map.get(n).push({m, l});
+    }
+  for (const [, list] of map) list.sort((a, b) => a.m.level - b.m.level);
+  return map;
+}
+const occupancy = () => {                       /* the NOW of each court */
+  const out = new Map();
+  for (const [n, list] of courtLoad()) out.set(n, list[0]);
+  return out;
+};
+const nameOf = sl => sl.team || sl.waitOn || "TBD";
+const seedOf = sl => sl.seed || "";
+
+/* ═══ the courts ═══════════════════════════════════════════════════
+   Placed on the grid at the venue's own coordinates: bank one down
+   column one, the middle bank at the TOP of column two, bank three down
+   column three. Nothing stretches to fill, so every court is the same
+   rectangle and the three empty rows in the middle are the floor. */
+const BANKCOL = {left: 1, mid: 2, right: 3};
+function drawCourts() {
+  const load = courtLoad();
+  const hl = highlight();
+  const cells = [];
+  for (const [bank, col] of Object.entries(BANKCOL))
+    FLOOR[bank].forEach((n, row) => {
+      const c = paint(n), list = load.get(n) || [];
+      const now = list[0], next = list[1];
+      const mine = S.lg === ALL || !now || now.l.name === L().name;
+      const on = hl.court === n || (now && hl.matches.has(now.l.name + "#" + now.m.id));
+      cells.push(`<button class="ct ${now ? "busy" : "free"} ${c.faint ? "dark" : ""}
+          ${mine ? "" : "dimmed"} ${on ? "hl" : ""} ${bank === "mid" ? "mid" : ""}"
+          style="grid-column:${col};grid-row:${row + 1};--paint:${c.hex};--pink:${c.ink}"
+          onclick="tapCourt(${n},event)">
+        <span class="slab"><span class="n">${n}</span></span>
+        <span class="b">
+          <span class="sv">${now ? seedsHTML(now.m) : "free"}</span>
+          ${now ? `<span class="el">${esc(shortLg(now.l.name))} · ${now.m.since} min</span>` : ""}
+          ${next ? `<span class="nx">then ${seedsHTML(next.m)}</span>` : ""}
+        </span>
+      </button>`);
+    });
+  $("courts").innerHTML = cells.join("");
+  $("ctn").textContent = `${CTS.length - load.size} free`;
+}
+
+/* A court with something on it selects itself — which cross-filters the
+   tree and the teams. An empty court asks what should go on it. */
+function tapCourt(n, ev) {
+  const list = courtLoad().get(n) || [];
+  if (!list.length) return popWaiting(n, ev);
+  S.sel = {court: n};
+  /* A court can hold a match and a promise. Only one of them is being
+     PLAYED, so the tree follows that one -- tapping a court used to
+     leave the tree wherever it was, which is the "am I on the right
+     match?" problem the court is supposed to answer. */
+  const i = S.leagues.findIndex(l => l.name === list[0].l.name);
+  if (i >= 0) S.lg = i;
+  closeBubble();
+  draw();
+}
+
+/* seeds are the shorthand shared by the courts and the tree; the names
+   are in the matrix and in the rail. The "vs" is markup rather than a
+   character because two names on one line ran together -- it is the
+   only blue in a line of white, which is where the eye should break. */
+const VS = `<span class="vs">vs</span>`;
+const seeds = m => m.slots.map(s => s.team ? (s.seed || "•") : "–").join(" v ");
+const seedsHTML = m => m.slots.map(s => esc(s.team ? (s.seed || "•") : "–")).join(VS);
+/* The whole name, and let the CSS decide what does not fit. This used to
+   take only the first word -- .split(/[ ,]/)[0] -- which made "Carolina
+   Beach Bumpers" into "Carolina" and, worse, turned a waitOn feeder like
+   "Winner on Court 6" into a bare "Winner". Two teams in one league can
+   share a first word; nothing can share a whole name. The cut was also
+   redundant: .it .t already ellipsised anything too long, so the split
+   bought a shorter string that still got ellipsised, having first thrown
+   away the part that identified it. Each side is its own span so the two
+   truncate independently and both stay legible, rather than one line
+   running out part-way through the second team. */
+const seedsNamesHTML = m => m.slots.map(s =>
+  `<span class="tn">${esc((s.seed ? s.seed + " " : "") + nameOf(s))}</span>`).join(VS);
+
+/* ═══ what is highlighted, everywhere at once ══════════════════════
+   One selection, three surfaces. Selecting a COURT highlights every
+   match assigned to it and every team in them — which with future
+   assignments can be more than one match and more than two teams, and
+   that is the point rather than a problem. */
+function highlight() {
+  const out = {matches: new Set(), teams: new Set(), court: null};
+  if (!S.sel) return out;
+  if (S.sel.court != null) {
+    out.court = S.sel.court;
+    for (const e of (courtLoad().get(S.sel.court) || [])) {
+      out.matches.add(e.l.name + "#" + e.m.id);
+      e.m.slots.forEach(sl => { if (sl.team) out.teams.add(sl.team); });
+    }
+    return out;
+  }
+  const m = findM(S.sel.league, S.sel.id);
+  if (!m) return out;
+  out.matches.add(S.sel.league + "#" + m.id);
+  /* a finished match keeps its court as a record, but that court is not
+     where anything is happening -- lighting it up beside a cell reading
+     FREE reads as a fault */
+  if (m.court && m.status !== "complete") out.court = courtNo(m.court);
+  m.slots.forEach(sl => { if (sl.team) out.teams.add(sl.team); });
+  return out;
+}
+
+/* ═══ the tree — rounds are columns, chips are seeds ═══════════════
+   Every match is CENTRED ON THE MATCHES THAT FEED IT, computed rather
+   than approximated with space-around, which lined some up and not
+   others. First column spreads evenly; after that a match sits at the
+   mean of its feeders' centres, then a pass keeps the column in order
+   and off itself. */
+/* One row of numbers per mode. The chip height is applied INLINE from
+   the same constant the layout maths uses, so the CSS and the geometry
+   cannot drift apart -- which is the whole reason the feeders line up. */
+const SHAPE = {
+  condensed: {h: 34, gap: 8},
+  detail:    {h: 56, gap: 11},
+};
+const shape = () => SHAPE[S.tree] || SHAPE.condensed;
+
+/* the narrowest a column may be before the lane starts wrapping rounds
+   off the end. 132px holds about twelve characters of a team name at
+   11.5px after the court slab takes its 27. ?dw= to try another. */
+const MINW = Number(ARG.get("dw")) || 132;
+
+/* The gutter BETWEEN COLUMNS, which is not the gutter between chips:
+   that one is vertical and changes with the mode. Declared here and
+   written into the markup, so the arithmetic and the CSS cannot say
+   different numbers. */
+const COLGAP = 7;
+
+/* How many of a lane's rounds share the row, and how wide they get.
+   Everything that fits, filling the pane exactly; and if that would
+   squeeze a column below MINW, the last round drops to its own row and
+   the rest re-fill. Returns the width FLOORED, so a rounding remainder
+   never becomes a scrollbar. */
+function laneFit(nCols, P) {
+  for (let n = nCols; n > 1; n--) {
+    const w = (P - COLGAP * (n - 1)) / n;
+    if (w >= MINW) return {n, w: Math.floor(w)};
+  }
+  return {n: 1, w: Math.floor(P)};
+}
+/* A match's position in the ORIGINAL, uncollapsed p-slot tree -- slot is
+   its 0-based index within its own construction round, before any bye
+   ever collapsed a sibling away (see domain.Match.Slot). Only meaningful
+   as a RELATIVE ordering key among matches that share a level and have
+   no real match feeding them (both slots resolved straight to a seed) --
+   those have nothing else to center themselves on, and without this they
+   fall back to raw list order, which groups every surviving round-1
+   match ahead of every round-2-descended-but-dependency-free match
+   regardless of which ones actually pair up next -- straddling an
+   unrelated match instead of sitting next to their real sibling. */
+const layoutOrder = m => m.slot * Math.pow(2, m.round - 1);
+
+function laneLayout(ms, CH, CGAP) {
+  const levels = [...new Set(ms.map(m => m.level))].sort((a, b) => a - b);
+  const cols = levels.map(v => ms.filter(m => m.level === v));
+  const peak = Math.max(1, ...cols.map(c => c.length));
+  const H = peak * CH + (peak - 1) * CGAP;
+  const y = {};
+  cols.forEach(col => {
+    const rank = new Map(col.slice().sort((a, b) => layoutOrder(a) - layoutOrder(b))
+                             .map((m, i) => [m.id, i]));
+    col.forEach(m => {
+      const fy = m.slots.map(sl => sl.from).filter(f => f && y[f] !== undefined)
+                        .map(f => y[f] + CH / 2);
+      const i = rank.get(m.id);
+      y[m.id] = fy.length ? fy.reduce((a, b) => a + b, 0) / fy.length - CH / 2
+                          : (H / col.length) * i + (H / col.length - CH) / 2;
+    });
+    /* in order, and not on top of each other */
+    const sorted = col.slice().sort((a, b) => y[a.id] - y[b.id]);
+    for (let i = 1; i < sorted.length; i++) {
+      const min = y[sorted[i - 1].id] + CH + CGAP;
+      if (y[sorted[i].id] < min) y[sorted[i].id] = min;
+    }
+    const last = sorted[sorted.length - 1];
+    const over = last ? (y[last.id] + CH) - H : 0;
+    if (over > 0) sorted.forEach(m => y[m.id] -= over);
+    sorted.forEach(m => y[m.id] = Math.max(0, y[m.id]));
+  });
+  return {levels, cols, H, y};
+}
+
+function setTree(mode) {
+  if (S.tree === mode) return;
+  S.tree = mode;
+  S.treeSwap = true;      /* drawTree animates this one redraw */
+  draw();
+}
+
+/* ── the toggle expands, it does not jump ──────────────────────────
+   The tree is rebuilt with innerHTML, so the new chips have no previous
+   position to transition from. So: measure every chip BEFORE the
+   rebuild, put the new ones back at those numbers with transitions off,
+   force one reflow, then release them to their real numbers. The
+   browser animates the difference.
+
+   Keyed on data-m, so a chip that did not exist before simply appears
+   and a chip that has gone is not chased. */
+function treeBefore() {
+  const was = new Map();
+  for (const el of $("tree").querySelectorAll(".m"))
+    was.set(el.dataset.m, {t: el.offsetTop, h: el.offsetHeight});
+  for (const el of $("tree").querySelectorAll(".cols"))
+    was.set("lane:" + el.dataset.lane, {h: el.offsetHeight});
+  return was;
+}
+function treeAfter(was) {
+  const moved = [];
+  for (const el of $("tree").querySelectorAll(".m")) {
+    const w = was.get(el.dataset.m);
+    if (!w) continue;
+    moved.push([el, el.style.top, el.style.height]);
+    el.style.transition = "none";
+    el.style.top = w.t + "px";
+    el.style.height = w.h + "px";
+  }
+  const lanes = [];
+  for (const el of $("tree").querySelectorAll(".cols")) {
+    const w = was.get("lane:" + el.dataset.lane);
+    if (!w) continue;
+    lanes.push([el, el.style.height]);
+    el.style.transition = "none";
+    el.style.height = w.h + "px";
+  }
+  if (!moved.length && !lanes.length) return;
+  void $("tree").offsetWidth;                    /* one reflow, then go */
+  $("tree").classList.add("swap");
+  for (const [el, top, h] of moved) {
+    el.style.transition = "";
+    el.style.top = top; el.style.height = h;
+  }
+  for (const [el, h] of lanes) { el.style.transition = ""; el.style.height = h; }
+  clearTimeout(swapT);
+  swapT = setTimeout(() => $("tree").classList.remove("swap"), 300);
+}
+let swapT;
+/* the three lanes (Winners/Losers/Final) for ONE league, exactly what
+   used to be drawTree()'s whole job — pulled out unchanged so All mode
+   can call it once per league instead of drawTree() only ever knowing
+   how to show one. Takes an explicit lg; nothing in here reads L(). */
+function laneBlockHTML(lg, hl, CH, CGAP) {
+  /* MEASURE THE PANE. Every layout mistake on this project so far came
+     from a constant that used to be true; the tree's own box is 524px
+     in landscape and about 800 in the portrait overlay, and it is the
+     same code either way. */
+  const P = Math.max(200, $("tree").clientWidth - 22);
+  const lanes = [["W", "Winners"], ["L", "Losers"], ["F", "Final"]];
+  const rlab = c => esc((c[0].label || "").replace(/^(Winners|Losers) /, ""));
+  /* ONE fit for the whole tree, taken from the lane with the most
+     rounds. Fitting each lane on its own filled every lane but made the
+     chips disagree -- and a one-round lane like the grand final then
+     stretched to the entire pane. This way the widest lane fills the
+     width, every chip in the league is the same size, and all three
+     lanes wrap after the same round. */
+  const widest = Math.max(1, ...lanes.map(([side]) =>
+    new Set(lg.matches.filter(m => m.side === side).map(m => m.level)).size));
+  /* On the phone overlay, wrapping traded one problem for a worse one:
+     reported from real use -- rounds stacking into extra rows reads as
+     "which one comes after which" the way columns-you-scroll-to never
+     do, and the scroll position already survives a close/reopen on its
+     own (#tree is a normal scrollable pane, nothing special kept it).
+     So never wrap there; every round gets its own full-width column at
+     the readable MINW, and #tree's existing overflow:auto is what a
+     finger drags across instead. */
+  const narrow = matchMedia("(max-width:1023px)").matches;
+  const fit = narrow ? {n: widest, w: MINW} : laneFit(widest, P);
+  return lanes.map(([side, lab]) => {
+    const ms = lg.matches.filter(m => m.side === side);
+    if (!ms.length) return "";
+    const {cols, H, y} = laneLayout(ms, CH, CGAP);
+    const row = cols.slice(0, fit.n), over = cols.slice(fit.n);
+    const W = `flex:0 0 ${fit.w}px;width:${fit.w}px`;
+    const colHTML = (col, yOf) => `<div class="col" style="${W}">${
+      col.map(m => chip(m, lg, yOf(m), hl, CH)).join("")}</div>`;
+
+    /* the wrapped rounds get their own little row, stacked from the top:
+       they have no feeders left on screen to line up with */
+    let tail = "";
+    if (over.length) {
+      const hgt = Math.max(...over.map(c => c.length)) * (CH + CGAP) - CGAP;
+      tail = `<div class="rlabs wrapped" style="gap:${COLGAP}px">${over.map(c =>
+          `<div style="${W}">${rlab(c)}</div>`).join("")}</div>
+        <div class="cols wrapped" data-lane="${side}2" style="gap:${COLGAP}px;height:${hgt}px">
+          ${over.map(col => colHTML(col,
+            m => col.indexOf(m) * (CH + CGAP))).join("")}
+        </div>`;
+    }
+    return `<div class="lane">
+      <div class="lanelab ${side}">${lab}</div>
+      <div class="rlabs" style="gap:${COLGAP}px">${
+        row.map(c => `<div style="${W}">${rlab(c)}</div>`).join("")}</div>
+      <div class="cols" data-lane="${side}" style="gap:${COLGAP}px;height:${H}px">
+        ${row.map(col => colHTML(col, m => y[m.id])).join("")}
+      </div>
+      ${tail}
+    </div>`;
+  }).join("");
+}
+
+/* opened independently, not an accordion where one closes another —
+   there is no single "the" league in All mode, so there is no reason
+   two of them can't be open at once. */
+function toggleTreeSec(lgName) {
+  if (S.treeOpen.has(lgName)) S.treeOpen.delete(lgName);
+  else S.treeOpen.add(lgName);
+  draw();
+}
+
+function drawTree() {
+  /* a layout can leave the tree out; measuring a display:none pane gives
+     zero, and the fit would lay the whole bracket out for a 200px box */
+  if (!$("ztree").offsetParent && !$("ztree").classList.contains("in")) return;
+  const was = S.treeSwap ? treeBefore() : null;
+  S.treeSwap = false;
+  const {h: CH, gap: CGAP} = shape();
+  $("tree").classList.toggle("detail", S.tree === "detail");
+  $("tgCond").classList.toggle("on", S.tree !== "detail");
+  $("tgDet").classList.toggle("on", S.tree === "detail");
+  const hl = highlight();
+
+  if (S.lg === ALL) {
+    /* every rotation-enabled league, one collapsible section apiece,
+       collapsed by default (S.treeOpen starts empty) — a volunteer who
+       taps All wants the floor-wide picture, not eight rounds times
+       five leagues dumped in front of her at once. */
+    const onLeagues = S.leagues.filter(l => l.on);
+    $("treelab").textContent = "Bracket";
+    const totalDone = onLeagues.reduce((a, l) =>
+      a + l.matches.filter(m => m.status === "complete").length, 0);
+    const totalAll = onLeagues.reduce((a, l) => a + l.matches.length, 0);
+    $("trn").textContent = onLeagues.length ? `${totalDone}/${totalAll} played` : "";
+    $("tree").innerHTML = onLeagues.map((lg, i) => {
+      const open = S.treeOpen.has(lg.name);
+      const done = lg.matches.filter(m => m.status === "complete").length;
+      /* only lay out the lanes (and only mount a deps overlay) for a
+         section that's actually open — a collapsed one costs nothing
+         and there's nothing wrong with an id that doesn't exist yet */
+      const body = open
+        ? laneBlockHTML(lg, hl, CH, CGAP) + `<svg class="deps" id="deps-${i}"></svg>`
+        : "";
+      return `<div class="treesec ${open ? "open" : ""}">
+        <button class="treesechead" onclick="toggleTreeSec('${esc(lg.name)}')">
+          <span class="car">${open ? "▾" : "▸"}</span>
+          <span class="nm">${esc(shortLg(lg.name))}</span>
+          <span class="cnt">${done}/${lg.matches.length} played</span>
+        </button>
+        <div class="treesecbody">${body}</div>
+      </div>`;
+    }).join("");
+    if (was) treeAfter(was);
+    drawDeps();
+    return;
+  }
+
+  const lg = L();
+  $("treelab").textContent = lg.name;
+  $("tree").innerHTML = laneBlockHTML(lg, hl, CH, CGAP) + `<svg id="deps"></svg>`;
+  if (was) treeAfter(was);
+  drawDeps();
+  const done = lg.matches.filter(m => m.status === "complete").length;
+  $("trn").textContent = `${done}/${lg.matches.length} played`;
+}
+
+/* ── the chain a selected match is waiting on ──────────────────────
+   Not just its feeders: this needs that, which needs the other. The
+   walk stops at anything already finished, because a finished match is
+   not blocking anybody -- so what is drawn is exactly the work still
+   standing between her and this match starting.
+
+   Geometry comes from getBoundingClientRect rather than from the layout
+   constants, so it cannot disagree with what is on the screen; the
+   elbow is the one the bracket already uses, out of the right edge and
+   into the left. */
+function drawDeps() {
+  let lg, svg;
+  if (S.lg === ALL) {
+    /* which league's section this is even about comes from the SELECTED
+       MATCH, not from L() — L() isn't safe to call under All. */
+    if (!S.sel || S.sel.league == null) return;
+    lg = S.leagues.find(l => l.name === S.sel.league);
+    if (!lg) return;
+    /* one <svg class="deps" id="deps-N"> per open accordion section, N
+       being that league's index among the "on" leagues in render order
+       (see drawTree()). A collapsed — or never-rendered — section has
+       no such element yet, and that's fine: nothing to draw, no crash. */
+    const idx = S.leagues.filter(l => l.on).indexOf(lg);
+    svg = idx >= 0 ? document.getElementById(`deps-${idx}`) : null;
+    if (!svg) return;
+  } else {
+    lg = L();
+    svg = $("deps");
+    if (!svg) return;
+  }
+  svg.innerHTML = "";
+  const sel = S.sel && S.sel.id != null && S.sel.league === lg.name
+    ? findM(S.sel.league, S.sel.id) : null;
+  if (!sel) return;
+
+  const blocking = new Set(), edges = [];
+  const walk = (m, depth) => {
+    if (depth > 8) return;
+    for (const sl of m.slots) {
+      if (sl.team || !sl.from) continue;            /* filled means settled */
+      const f = lg.matches.find(x => x.id === sl.from);
+      if (!f || f.status === "complete") continue;
+      edges.push([f.id, m.id]);
+      if (!blocking.has(f.id)) { blocking.add(f.id); walk(f, depth + 1); }
+    }
+  };
+  walk(sel, 0);
+  if (!edges.length) return;
+
+  const host = $("tree"), hb = host.getBoundingClientRect();
+  const at = el => {
+    const r = el.getBoundingClientRect();
+    return {l: r.left - hb.left + host.scrollLeft, t: r.top - hb.top + host.scrollTop,
+            w: r.width, h: r.height};
+  };
+  const node = id => host.querySelector(`[data-m="${lg.name}#${id}"]`);
+  const parts = [];
+  for (const [from, to] of edges) {
+    const a = node(from), b = node(to);
+    if (!a || !b) continue;
+    const A = at(a), B = at(b);
+    const y1 = Math.round(A.t + A.h / 2), y2 = Math.round(B.t + B.h / 2);
+    const aR = A.l + A.w, bR = B.l + B.w;
+    /* WHICH EDGES THE LINE USES depends on where the two chips actually
+       sit, and there are three cases -- the third is the common one and
+       was wrong: a losers match feeds off a winners match in the SAME
+       round, so the two chips share a column and the same x range. The
+       line then left A's right edge, crossed the whole of B, and landed
+       on B's far side. Now it leaves the right and comes back into the
+       right, round the outside through the gutter. */
+    let pts;
+    if (B.l >= aR - 4) {                       /* B is downstream, to the right */
+      const mx = Math.round((aR + B.l) / 2);
+      pts = [aR, y1, mx, y1, mx, y2, B.l, y2];
+    } else if (bR <= A.l + 4) {                /* B is away to the left */
+      const mx = Math.round((A.l + bR) / 2);
+      pts = [A.l, y1, mx, y1, mx, y2, bR, y2];
+    } else {                                   /* same column band */
+      const mx = Math.max(aR, bR) + Math.round(COLGAP / 2);
+      pts = [aR, y1, mx, y1, mx, y2, bR, y2];
+    }
+    parts.push(`<polyline points="${pts[0]},${pts[1]} ${pts[2]},${pts[3]} ` +
+               `${pts[4]},${pts[5]} ${pts[6]},${pts[7]}"/>`);
+  }
+  for (const id of blocking) {
+    const n = node(id);
+    if (n) n.classList.add("dep");
+  }
+  svg.setAttribute("width", host.scrollWidth);
+  svg.setAttribute("height", host.scrollHeight);
+  svg.innerHTML = parts.join("");
+}
+
+function chip(m, lg, top, hl, CH) {
+  const st = m.status === "on_court" ? "live" : m.status === "complete" ? "done"
+           : m.status === "eligible" ? "ready" : "";
+  const on = hl.matches.has(lg.name + "#" + m.id);
+  const c = m.court ? paint(courtNo(m.court)) : null;
+  const det = S.tree === "detail";
+  const open = `<button class="m ${det ? "d" : ""} ${st} ${on ? "hl" : ""}"
+      style="top:${top}px;height:${CH}px" data-m="${esc(lg.name)}#${m.id}"
+      onclick="selectMatch('${esc(lg.name)}',${m.id},event)">`;
+
+  if (!det) {
+    const one = (sl, i) => `<span class="s ${m.winner === i ? "win" : ""} ${sl.team ? "" : "tbd"}">${
+      sl.team ? (sl.seed || "•") : "–"}</span>`;
+    return `${open}
+      ${one(m.slots[0], 0)}<span class="vs">vs</span>${one(m.slots[1], 1)}
+      ${c ? `<span class="ctn ${c.faint ? "dark" : ""}"
+        style="--paint:${c.hex};--pink:${c.ink}">${courtNo(m.court)}</span>` : ""}
+    </button>`;
+  }
+
+  /* the winner goes on top, which is the rule the board already keeps */
+  const order = m.status === "complete" && m.winner === 1 ? [1, 0] : [0, 1];
+  const row = i => {
+    const sl = m.slots[i];
+    return `<span class="r ${m.winner === i ? "win" : ""} ${sl.team ? "" : "wait"}">
+      <span class="s">${sl.team ? esc(sl.seed || "•") : "–"}</span>
+      <span class="nm">${esc(nameOf(sl))}</span></span>`;
+  };
+  return `${open}
+    <span class="cs ${c ? "" : "none"} ${c && c.faint ? "dark" : ""}"
+        style="${c ? `--paint:${c.hex};--pink:${c.ink}` : ""}"><b>${
+      c ? courtNo(m.court) : "&ndash;"}</b></span>
+    <span class="tt">${row(order[0])}<span class="dv"><i>vs</i></span>${row(order[1])}</span>
+  </button>`;
+}
+
+/* ═══ the matrix — every team still in, and where it is ════════════ */
+const RANK = {court: 3, next: 2, wait: 1, done: 0};
+function teamRows(lg, all) {
+  const t = new Map();
+  for (const m of lg.matches)
+    for (const sl of m.slots)
+      if (sl.team && !t.has(sl.team))
+        t.set(sl.team, {team: sl.team, seed: sl.seed || 99, losses: 0, at: null});
+  for (const m of lg.matches) {
+    if (m.status === "complete" && (m.winner === 0 || m.winner === 1)) {
+      const lost = m.slots[1 - m.winner];
+      if (lost.team && t.has(lost.team)) t.get(lost.team).losses++;
+    }
+    /* WHERE A TEAM IS, in the order that matters to her: on a court
+       beats next up beats waiting on somebody else beats finished. A
+       waiting team used to get nothing at all, which made the row
+       unselectable -- and a team standing in front of her waiting is
+       exactly the one she needs to look up. */
+    const mark = (kind, court) => m.slots.forEach(sl => {
+      if (!sl.team || !t.has(sl.team)) return;
+      const row = t.get(sl.team);
+      if (!row.at || RANK[kind] > RANK[row.at.kind]) row.at = {kind, court, id: m.id};
+    });
+    if (m.status === "on_court" && m.court) mark("court", courtNo(m.court));
+    else if (m.status === "eligible") mark("next");
+    else if (m.status !== "complete") mark("wait");
+    else mark("done", m.court ? courtNo(m.court) : null);
+  }
+  const cap = lg.format === "single" ? 1 : 2;
+  return [...t.values()].filter(r => all || r.losses < cap)
+    .map(r => ({...r, out: r.losses >= cap}))
+    .sort((a, b) => (a.out - b.out) || (a.seed - b.seed));
+}
+
+function setTeams(all) { S.allTeams = !!all; draw(); }
+/* one row, one league's worth of context baked in via the closure args —
+   `tag` turns on the small league sub-label, the same pattern the
+   Action Items cards already use (shortLg next to the match), because
+   under All mode (or a cross-league search result) a bare team name no
+   longer says which bracket it's in. Shared by the Teams card and the
+   team-search results (findTeam()) so both render identically instead
+   of two copies of the same markup drifting apart. */
+function teamRowHTML(lg, r, tag, hl, jump) {
+  const c = r.at && r.at.kind === "court" && r.at.court ? paint(r.at.court) : null;
+  const kind = r.at ? r.at.kind : null;
+  const where = kind === "court" ? `court ${r.at.court}`
+    : kind === "next" ? "next" : kind === "wait" ? "waiting" : "";
+  /* jump=true (search results only) switches S.lg to this team's league
+     first -- a deliberate cross-league jump, the same category as
+     tapping a physical court, not the silent kind the All-chip work
+     ruled out. A plain Teams-row tap (jump falsy) never touches S.lg. */
+  const fn = jump ? "jumpToTeam" : "selectMatch";
+  return `<button class="tr ${hl.teams.has(r.team) ? "hl" : ""} ${r.out ? "gone" : r.losses ? "two" : ""}"
+      onclick="${r.at ? `${fn}('${esc(lg.name)}',${r.at.id},event)` : ""}">
+    <span class="sd">${r.seed === 99 ? "" : r.seed}</span>
+    <span class="nm">${esc(r.team)}</span>
+    ${tag ? `<span class="lgtag">${esc(shortLg(lg.name))}</span>` : ""}
+    ${c ? `<span class="dot" style="--paint:${c.hex}"></span>` : ""}
+    <span class="wh">${r.out ? "out" : where}</span>
+  </button>`;
+}
+function drawMatrix() {
+  const hl = highlight();
+  $("tgAct").classList.toggle("on", !S.allTeams);
+  $("tgAll").classList.toggle("on", !!S.allTeams);
+  if (S.lg === ALL) {
+    const onLeagues = S.leagues.filter(l => l.on);
+    $("matrix").innerHTML = onLeagues.flatMap(lg =>
+      teamRows(lg, S.allTeams).map(r => teamRowHTML(lg, r, true, hl))).join("");
+    return;
+  }
+  const lg = L();
+  $("matrix").innerHTML = teamRows(lg, S.allTeams).map(r => teamRowHTML(lg, r, false, hl)).join("");
+}
+
+/* ═══ find a team ═══════════════════════════════════════════════════
+   The only thing worth searching for turned out to be a team, fast,
+   across every league regardless of which one is on screen or on/off
+   for the board -- an omni-search over matches/courts/leagues too
+   didn't earn its keep. Reuses the same #blade drawer openConfig()
+   already uses, and teamRowHTML's jump=true path (see above) for
+   results, so tapping one behaves exactly like tapping that team
+   anywhere else in the app, just from a different starting league. */
+function openTeamSearch() {
+  openBlade("Find a team", `<input type="search" id="tsBox" placeholder="Team name…"
+      autocomplete="off" oninput="renderTeamSearch(this.value)">
+    <div id="tsResults"></div>`);
+  renderTeamSearch("");
+  $("tsBox").focus();
+}
+function renderTeamSearch(q) {
+  const needle = q.trim().toLowerCase();
+  const hl = highlight();
+  const rows = [];
+  if (needle)
+    for (const lg of S.leagues)
+      for (const r of teamRows(lg, true))
+        if (r.team.toLowerCase().includes(needle)) rows.push({lg, r});
+  $("tsResults").innerHTML = !needle
+    ? `<div class="hint">Start typing a team name.</div>`
+    : rows.length
+    ? rows.map(({lg, r}) => teamRowHTML(lg, r, true, hl, true)).join("")
+    : `<div class="hint">No teams match "${esc(q)}".</div>`;
+}
+function jumpToTeam(lgName, matchId, ev) {
+  const i = S.leagues.findIndex(l => l.name === lgName);
+  if (i >= 0) S.lg = i;
+  closeBlade();
+  if (matchId != null) selectMatch(lgName, matchId, ev);
+  else draw();
+}
+
+/* ═══ the inbox — what is waiting on her ═══════════════════════════
+   The right-hand column used to hold a card for whatever was selected,
+   which the bubble does better and closer to the thing it is about. So
+   the space goes to the only question that matters when nothing is
+   selected: WHAT NEEDS DOING?
+
+   Two groups, in the order they go wrong:
+     a result nobody has recorded   — the bracket cannot advance
+     a match with no court          — teams standing around
+
+   There was a third, "no rest", flagging a team due straight back out.
+   It is gone: the venue does not police rest, so it was a warning about
+   nothing, and honouring it needed a clock nobody keeps.
+*/
+/* `everyLeague`, when true, ignores the current tab and always spans
+   every league on the board — used by drawChips() so a tab's own badge
+   count doesn't disappear the moment some OTHER tab is selected. Every
+   other caller (the rail itself) wants the scoped view: whichever
+   league is selected, or every league when All is selected. */
+function inbox(everyLeague) {
+  let on = S.leagues.filter(l => l.on);
+  if (!everyLeague && S.lg !== ALL) on = on.filter(l => l === L());
+
+  const results = on.flatMap(l => l.matches
+    .filter(m => m.court && m.status !== "complete")
+    .map(m => ({l, m, court: courtNo(m.court), el: m.since})))
+    .sort((a, b) => b.el - a.el);
+
+  const courts = on.flatMap(l => l.matches
+    .filter(m => !m.court && m.status === "eligible" && m.slots.every(s => s.team))
+    .map(m => ({l, m})));
+
+  return {results, courts};
+}
+
+/* ── one card, everywhere ──────────────────────────────────────────
+   The list, the popovers and the player screens all show a match the
+   same way: a court chip on the left, two lines of text. The CHIP is
+   the court assignment and its own tap target; the BODY means "show me
+   everything about this", which is the cross-filter. Two meanings, two
+   targets, one shape. */
+function icard(o) {
+  return `<div class="it ${o.cls || ""} ${o.on ? "hl" : ""}"
+      ${o.key ? `data-i="${o.key}"` : ""} ${o.tap ? `onclick="${o.tap}"` : ""}>
+    ${o.chip}
+    <span class="b"><span class="t">${o.title}</span><span class="s">${o.sub}</span></span>
+  </div>`;
+}
+/* the court in its own paint, or a grey TBD -- never a green suggestion,
+   which read as "done" on a match that had not even started */
+function cchip(n, tap, cls) {
+  const c = n ? paint(n) : null;
+  return `<span class="cc ${c ? "" : "tbd"} ${c && c.faint ? "dark" : ""} ${cls || ""}"
+      style="${c ? `--paint:${c.hex};--pink:${c.ink}` : ""}"
+      ${tap ? `onclick="event.stopPropagation();${tap}"` : ""}
+      >${n ? `<b>${n}</b>` : `<i>TBD</i>`}</span>`;
+}
+
+function drawInbox() {
+  const {results, courts} = inbox();
+  const hl = highlight();
+  $("ibn").textContent = results.length + courts.length;
+  const key = e => e.l.name + "#" + e.m.id;
+  const lit = e => hl.matches.has(key(e));
+  const head = (t, n) => `<div class="ihead"><b>${t}</b><span class="c">${n}</span></div>`;
+  const parts = [];
+
+  if (results.length) {
+    parts.push(head("Needs a result", results.length));
+    parts.push(results.map(e => icard({
+      key: key(e), on: lit(e),
+      chip: cchip(e.court, `popCourtsAt('${esc(e.l.name)}',${e.m.id},event)`),
+      title: seedsNamesHTML(e.m),
+      /* the bare number on the right was minutes and did not say so */
+      sub: `${esc(shortLg(e.l.name))} &middot; ${esc(e.m.label)}
+            &middot; <span class="mins">${e.el} min</span>`,
+      tap: `openBubbleFor('${esc(e.l.name)}',${e.m.id},event)`,
+    })).join(""));
+  }
+  if (courts.length) {
+    parts.push(head("Needs a court", courts.length));
+    parts.push(courts.map(e => icard({
+      key: key(e), on: lit(e),
+      chip: cchip(null, `popCourtsAt('${esc(e.l.name)}',${e.m.id},event)`),
+      title: seedsNamesHTML(e.m),
+      sub: `${esc(shortLg(e.l.name))} &middot; ${esc(e.m.label)}`,
+      /* the body only selects: assigning is the chip, so a tap here
+         cannot put a match on a court by accident */
+      tap: `selectOnly('${esc(e.l.name)}',${e.m.id})`,
+    })).join(""));
+  }
+  if (!parts.length) parts.push(`<div class="hint"><b>Nothing waiting</b>
+    Every match is on a court and every result is in.</div>`);
+  $("inbox").innerHTML = parts.join("");
+}
+
+/* ═══ the bubble, and the two things the controller does ═══════════
+   Assign a court. Record a winner. Everything else is derived. */
+function selectMatch(lgName, id, ev) {
+  const r = rectOf(ev);          /* before draw(): that node is about to go */
+  /* Deliberately does NOT touch S.lg — once Action Items and Teams are
+     scoped to the current selection (see inbox()), everything reachable
+     from this path already belongs to the league in view (or All is in
+     view and staying there is correct), so silently jumping tabs here
+     was pure confusion, not a feature. Tapping a COURT is the one place
+     that still switches leagues on purpose — see tapCourt(). */
+  S.sel = {league: lgName, id};
+  draw();
+  if (ev) openBubble(lgName, id, r);
+}
+function openBubbleFor(lgName, id, ev) { selectMatch(lgName, id, ev); }
+/* highlight everything about a match and open nothing -- the answer to
+   "which match is this?", which is most of what she asks the screen */
+function selectOnly(lgName, id) {
+  S.sel = {league: lgName, id};       /* same reasoning as selectMatch() above */
+  closeBubble(); draw();
+}
+/* a placeholder says what it is waiting for; this points at it. Both
+   the chip in the tree and the card in the list blink, because the
+   answer is "that match, over there, and it is in your list already". */
+function flashFeeder(lgName, fromId) {
+  const k = lgName + "#" + fromId;
+  const hit = [...document.querySelectorAll(`[data-m="${k}"],[data-i="${k}"]`)];
+  if (!hit.length) return toast("that match is not on this screen", null);
+  hit.forEach(el => { el.classList.remove("flash"); void el.offsetWidth;
+                      el.classList.add("flash"); });
+  setTimeout(() => hit.forEach(el => el.classList.remove("flash")), 1000);
+}
+
+/* an empty court asks what should go on it, beside the court itself */
+function popWaiting(n, ev) {
+  const r = rectOf(ev);
+  const c = paint(n);
+  const rows = S.leagues.filter(l => l.on).flatMap(l => l.matches
+    .filter(m => !m.court && m.status === "eligible" && m.slots.every(x => x.team))
+    .map(m => ({l, m})));
+  $("bub").innerHTML = `<div class="pophead">court ${n} &middot; ${esc(c.name)}
+      &mdash; put one on</div>
+    <div class="poplist">${rows.length
+      /* the chip shows the court she tapped, because that is what the
+         card becomes: the whole popover is one tap of a shortcut */
+      ? rows.map(e => icard({
+          chip: cchip(n),
+          title: seedsNamesHTML(e.m),
+          sub: `${esc(shortLg(e.l.name))} &middot; ${esc(e.m.label)}`,
+          tap: `assign('${esc(e.l.name)}',${e.m.id},${n})`,
+        })).join("")
+      : `<div class="hint" style="padding:2px 2px 8px">Nothing is waiting on a court.</div>`}</div>`;
+  $("bub2").classList.remove("in");
+  S.bubOn = null;
+  place($("bub"), r, 330);
+}
+
+/* -- attach a popover to what was tapped ---------------------------
+   Right if it fits, left if it does not, and always on screen. The rect
+   has to be measured BEFORE the redraw: the first version drew first and
+   then measured a node that no longer existed, which is why every bubble
+   landed in the top-left corner. */
+/* Every popover raises the scrim behind it. Two reasons, and the second
+   is why it is not optional:
+   1. It says "this is dismissible" before anyone has to guess.
+   2. It removes the dismissal's dependence on event delegation. The
+      window-level pointerdown handler works in every browser this can
+      be tested in, and did not work on a real iPhone. Rather than keep
+      guessing which of iOS Safari's delegation quirks was eating it,
+      an outside tap now lands on a real full-screen element with its
+      own handler -- #scrim has closed the blade this way since it was
+      written, and its onclick already calls closeBubble(). The
+      delegated handler stays as the belt to this pair of braces. */
+function popScrim(on) {
+  const s = $("scrim"), bladeOpen = $("blade").classList.contains("in");
+  if (on) {
+    if (!bladeOpen) s.classList.add("soft");   /* a popover dims less than a drawer */
+    s.classList.add("in");
+  } else if (!bladeOpen) {
+    s.classList.remove("in", "soft");
+  }
+}
+
+function place(el, r, w) {
+  el.style.width = w + "px";
+  el.classList.add("in");
+  popScrim(true);
+  const h = el.offsetHeight;
+  let x = r.right + 10;
+  if (x + w > innerWidth - 8) x = r.left - w - 10;   /* no room right: flip */
+  x = Math.max(8, Math.min(x, innerWidth - w - 8));
+  const y = Math.max(8, Math.min(r.top - 6, innerHeight - h - 8));
+  el.style.left = Math.round(x) + "px";
+  el.style.top = Math.round(y) + "px";
+}
+const rectOf = ev => ev && ev.currentTarget
+  ? ev.currentTarget.getBoundingClientRect()
+  : {left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 3};
+
+function openBubble(lgName, id, r) {
+  const m = findM(lgName, id);
+  if (!m) return;
+  const c = m.court ? paint(courtNo(m.court)) : null;
+  const settled = m.status === "complete";
+  /* TAPPING THE WINNER AGAIN IS THE UNDO. It is the same tap, so there
+     is nothing to learn and nothing to aim at; tapping the other name
+     switches the result rather than making her clear it first. A slot
+     with no team yet is not a winner, it is a question -- so it points
+     at the match that has to finish before this one can start. */
+  const side = (sl, i) => {
+    const won = settled && m.winner === i;
+    const tap = sl.team ? `toggleWinner('${esc(lgName)}',${id},${i})`
+              : sl.from ? `flashFeeder('${esc(lgName)}',${sl.from})` : "";
+    return `<button class="side ${won ? "won" : ""} ${settled && !won ? "lost" : ""}
+        ${sl.team ? "" : "tbd"}" ${tap ? `onclick="${tap}"` : ""}>
+      <span class="sd">${sl.seed || ""}</span>
+      <span class="nm">${esc(nameOf(sl))}</span>
+      ${won ? `<span class="tick">clear</span>`
+        : !sl.team && sl.from ? `<span class="tick">show me</span>` : ""}
+    </button>`;
+  };
+  $("bub").innerHTML = `
+    <button class="xclose" onclick="event.stopPropagation();closeBubble()" aria-label="close">&times;</button>
+    <div class="top">
+      <button class="cslab" style="${c ? `--paint:${c.hex};--pink:${c.ink}` : ""}"
+          onclick="popCourts('${esc(lgName)}',${id},event)">
+        <span class="n">${c ? courtNo(m.court) : "-"}</span>
+        <span class="lab">${c ? "court" : "no court"}</span>
+      </button>
+      <div class="who">
+        <div class="bmeta"><b>${esc(shortLg(lgName))}</b> &middot; ${esc(m.label)}</div>
+        ${side(m.slots[0], 0)}
+        <div class="rule">vs</div>
+        ${side(m.slots[1], 1)}
+      </div>
+    </div>
+    <div class="foot">
+      <button class="mic" onclick="popAnnounce('${esc(lgName)}',${id},event)">announce</button>
+    </div>`;
+  S.bubOn = {league: lgName, id};      /* so a result can redraw it in place */
+  S.bubAt = {left: r.left, right: r.right, top: r.top};
+  place($("bub"), r, 300);
+}
+/* recording a result used to close the bubble, which is wrong now that
+   the result is a toggle: she needs to see what she just did, and be
+   able to take it back in the same place */
+function redrawBubble() {
+  if (S.bubOn && $("bub").classList.contains("in"))
+    openBubble(S.bubOn.league, S.bubOn.id, S.bubAt);
+}
+/* -- the court picker, drawn as the map ---------------------------
+   Every court in the venue's banks, painted. A court in use is faded but
+   still selectable, because a future match can be promised to it. This
+   replaces the sweep-in blade: a picker belongs next to the thing it is
+   picking for, not at the edge of the screen. */
+/* Opened from a card in the rail, the picker takes its VERTICAL place
+   from the row she tapped and its HORIZONTAL place from the whole list:
+   anchored to the badge it landed under the badge, on top of the cards
+   below it. Beside the column, the list stays readable. */
+function popCourtsAt(lgName, id, ev) {
+  const r = rectOf(ev);
+  const rail = $("zrail").getBoundingClientRect();
+  S.sel = {league: lgName, id};
+  draw();
+  $("bub2").classList.remove("in");
+  popCourtsInto($("bub"), lgName, id, {left: rail.left, right: rail.right, top: r.top});
+}
+function popCourts(lgName, id, ev) {
+  popCourtsInto($("bub2"), lgName, id, $("bub").getBoundingClientRect());
+}
+function popCourtsInto(el, lgName, id, r) {
+  const m = findM(lgName, id);
+  const load = courtLoad();
+  const here = m.court ? courtNo(m.court) : null;
+  const cells = [];
+  for (const [bank, col] of Object.entries(BANKCOL))
+    FLOOR[bank].forEach((n, row) => {
+      const c = paint(n), busy = (load.get(n) || []).length && n !== here;
+      cells.push(`<button class="cm ${busy ? "busy" : ""} ${n === here ? "here" : ""}
+          ${c.faint ? "dark" : ""} ${bank === "mid" ? "mid" : ""}"
+          style="grid-column:${col};grid-row:${row + 1};--paint:${c.hex};--pink:${c.ink}"
+          onclick="assign('${esc(lgName)}',${id},${n})">
+        <span class="s"><span>${n}</span></span>
+        <span class="l">${busy ? "in use" : esc(c.name)}</span>
+      </button>`);
+    });
+  /* center column, bottom row: the two real mid-bank courts sit at rows
+     1-2 (see .cm.mid's stagger), so row 5 keeps clear separation instead
+     of crowding them. Only offered when there's a court to take away. */
+  const unassignCell = here ? `<button class="cm unassign" style="grid-column:2;grid-row:5"
+      onclick="unassign('${esc(lgName)}',${id})">
+    <span class="s"><span>&times;</span></span>
+    <span class="l">unassign</span>
+  </button>` : "";
+  el.innerHTML = `<div class="pophead">put it on</div>
+    <div class="cmap">${cells.join("")}${unassignCell}</div>`;
+  place(el, r, 250);
+}
+
+/* -- what she is about to say into the microphone -----------------
+   One match, or every match of a league that is on court right now. The
+   board shows whichever she chose, so the screen matches the sentence. */
+function popAnnounce(lgName, id, ev) {
+  const lg = S.leagues.find(l => l.name === lgName);
+  const live = lg.matches.filter(x => x.court && x.status !== "complete");
+  $("bub2").innerHTML = `<div class="pophead">announce</div>
+    <button class="popitem" onclick="announceOn('${esc(lgName)}',${id})">
+      <span class="sd">this</span><span class="nm">just this match</span></button>
+    <button class="popitem" onclick="announceLeague('${esc(lgName)}')">
+      <span class="sd">all</span>
+      <span class="nm">${esc(shortLg(lgName))} now on court</span>
+      <span class="mn">${live.length} up</span></button>`;
+  place($("bub2"), $("bub").getBoundingClientRect(), 264);
+}
+function announceLeague(lgName) {
+  S.announcing = {league: lgName, match: 0};
+  closeBubble(); drawFoot();
+  syncOrRevert(api("/api/board", {action: "announce", league: lgName, match: 0, seq: nextSeq()}),
+    () => { S.announcing = null; drawFoot(); }, "announce that league");
+  toast(`on the board: all of ${shortLg(lgName)}`, () => {
+    S.announcing = null; drawFoot();
+    syncOrRevert(api("/api/board", {action: "unannounce", seq: nextSeq()}), () => {}, "undo did not reach the server");
+  });
+}
+
+function closeBubble() {
+  $("bub").classList.remove("in");
+  $("bub2").classList.remove("in");
+  popScrim(false);
+}
+/* a tap anywhere else dismisses it — the bubble is a popup, not a mode,
+   and it must not be possible to get stuck behind one. A dead-space tap
+   (not on a match/item/team row/court, and not inside the blade drawer
+   -- e.g. typing in team search -- since those set their own selection
+   right after or aren't selection-related at all) also clears the
+   cross-highlight itself, not just the card: S.sel otherwise has no way
+   back to "nothing selected" once set through selectOnly(), which never
+   opens a bubble at all. */
+addEventListener("pointerdown", e => {
+  const b = $("bub"), b2 = $("bub2"), blade = $("blade");
+  /* inside a popup or the drawer is not an "outside" tap at all */
+  if (b.contains(e.target) || b2.contains(e.target) || blade.contains(e.target)) return;
+
+  /* ANY tap outside dismisses the popup -- including one that lands on
+     another match, court card or team row. The selectable-row guard
+     below used to run first and skip this, so opening the court
+     selector from an Action Item and then tapping a court, or the next
+     item down, left the selector floating over a board that had already
+     moved on. A popup is not a mode: the tap that leaves it is the tap
+     that closes it. Checked on b2 as well as b, because the nested
+     selector opened from inside a match bubble lives there. */
+  if (b.classList.contains("in") || b2.classList.contains("in")) closeBubble();
+
+  /* The cross-highlight is a different question with a different
+     answer. A tap on a selectable row is about to set its own
+     selection, and clearing S.sel here would fight that -- so only
+     dead space clears it. (Without this, S.sel set through
+     selectOnly(), which opens no bubble at all, would have no way back
+     to "nothing selected".) */
+  if (e.target.closest(".m,.it,.tr,.ct")) return;
+  if (S.sel) { S.sel = null; draw(); }
+}, true);
+
+
+/* ── the bracket advances itself ────────────────────────────────────
+   A result fills whatever slots feed off this match, which is what
+   turns a waiting match into a ready one. It hands back what it filled
+   so that both undo AND clearing a result can empty it again -- the
+   first version could only undo, so a cleared result left the next
+   round holding a team that had not won yet.
+
+   This stays a LOCAL, OPTIMISTIC update -- applied to S immediately, on
+   the same tap, before any network round trip -- because a coordinator
+   tapping through matches at arm's length needs the same instant
+   acknowledgement every other control on this board gives her; waiting
+   on a LAN round trip before so much as a colour changes fails the
+   hostess principle. Each caller below also fires the real POST in the
+   background and rolls this local change back if the server rejects it,
+   so the tap is honest, not just responsive: what she sees is provisional
+   until the server agrees, same as it would be for a network that hiccups
+   mid-tap at a beach venue. The periodic refreshBrackets() poll (see
+   below) is what reconciles everything for real, on its own schedule,
+   including anything a second controller did to the same league. */
+function advance(lgName, m) {
+  const lg = S.leagues.find(l => l.name === lgName);
+  const out = [];
+  const put = (sl, from) => {
+    out.push({sl, was: sl.waitOn});
+    Object.assign(sl, {team: from.team, seed: from.seed, cap: from.cap});
+    delete sl.waitOn;
+  };
+  for (const t of lg.matches)
+    for (const sl of t.slots) {
+      if (sl.from !== m.id || sl.team) continue;
+      if (sl.kind === "winner") put(sl, m.slots[m.winner]);
+      if (sl.kind === "loser") put(sl, m.slots[1 - m.winner]);
+    }
+  for (const t of lg.matches)
+    if (t.status === "pending" && t.slots.every(s => s.team)) t.status = "eligible";
+  return out;
+}
+function unadvance(filled) {
+  (filled || []).forEach(f => {
+    delete f.sl.team; delete f.sl.seed; delete f.sl.cap;
+    f.sl.waitOn = f.was;
+  });
+  for (const l of S.leagues)
+    for (const t of l.matches)
+      if (t.status === "eligible" && !t.slots.every(x => x.team)) t.status = "pending";
+}
+
+/* A background POST that failed reverses whatever local() already did
+   and says why, rather than leaving the board confidently showing
+   something the server refused. */
+function syncOrRevert(promise, revert, verb) {
+  promise.catch(e => {
+    revert();
+    draw(); redrawBubble();
+    toast(`${verb}: ${e.message}`, null);
+  });
+}
+
+/* one tap, both directions */
+function toggleWinner(lgName, id, i) {
+  const m = findM(lgName, id);
+  if (m.status !== "complete") return pickWinnerOn(lgName, id, i);
+  if (m.winner === i) return clearResult(lgName, id);
+  clearResult(lgName, id, true);            /* the other name: switch it */
+  pickWinnerOn(lgName, id, i);
+}
+
+function pickWinnerOn(lgName, id, i, quiet) {
+  const m = findM(lgName, id);
+  const before = {status: m.status, winner: m.winner, court: m.court};
+  m.status = "complete"; m.winner = i;
+  /* THE COURT STAYS ON THE MATCH. It used to be blanked, which freed
+     the court by erasing the only record of where the game was played.
+     A finished match does not hold a court either way -- courtLoad()
+     ignores anything complete -- so the court reads free on the map and
+     the match still says where it happened. */
+  const freed = m.court ? courtNo(m.court) : null;
+  m._filled = advance(lgName, m);
+  draw(); redrawBubble();
+  syncOrRevert(
+    api("/api/result", {league: lgName, match: id, winnerSlot: i}),
+    () => { unadvance(m._filled); Object.assign(m, before); m._filled = null; },
+    "could not record the result");
+  if (quiet) return;
+  toast(`${nameOf(m.slots[i]).split(/[ ,]/)[0]} won${freed ? ` · court ${freed} free` : ""}`,
+    () => {
+      unadvance(m._filled); Object.assign(m, before); m._filled = null;
+      syncOrRevert(api("/api/undo", {}), () => {}, "undo did not reach the server");
+    });
+}
+
+/* clearing a result puts the match back on the court it was on -- a
+   mis-tap does not mean the teams walked off. Targets THIS match's own
+   resultSeq, never "undo whatever happened last": another match may well
+   have moved on since this one's result landed, and the server correctly
+   refuses an undo that would strand a later match that depended on it. */
+function clearResult(lgName, id, quiet) {
+  const m = findM(lgName, id);
+  const was = m.winner, seq = m.resultSeq;
+  m.winner = -1;                            /* or the chip keeps a winner */
+  unadvance(m._filled); m._filled = null;
+  /* the court was never taken away, so clearing simply puts the match
+     back on it -- a mis-tap does not mean the teams walked off */
+  m.status = m.court ? "on_court" : m.slots.every(x => x.team) ? "eligible" : "pending";
+  draw(); redrawBubble();
+  if (seq) syncOrRevert(
+    api("/api/undo", {seq}),
+    () => { m.winner = was; m.status = "complete"; },
+    "could not clear the result");
+  if (quiet) return;
+  toast("result cleared", () => pickWinnerOn(lgName, id, was, true));
+}
+function announceOn(lgName, id) {
+  const m = findM(lgName, id);
+  S.announcing = {league: lgName, match: m.id};
+  closeBubble(); drawFoot();
+  syncOrRevert(api("/api/board", {action: "announce", league: lgName, match: m.id, seq: nextSeq()}),
+    () => { S.announcing = null; drawFoot(); }, "announce that match");
+  toast(`on the board: ${esc(seeds(m))}`, () => {
+    S.announcing = null; drawFoot();
+    syncOrRevert(api("/api/board", {action: "unannounce", seq: nextSeq()}), () => {}, "undo did not reach the server");
+  });
+}
+/* The persistent exit from an announcement -- see drawFoot()'s #fscr
+   button. Same shape as the undo-toast's own unannounce call, just
+   reachable at any time instead of only in the few seconds before a
+   toast expires. */
+function stopAnnouncing() {
+  S.announcing = null;
+  drawFoot();
+  syncOrRevert(api("/api/board", {action: "unannounce", seq: nextSeq()}), () => {}, "stop announcing");
+}
+
+/* assigning a court IS the act — nothing is "sent" on the SAME tap, but
+   it really is sent, in the background, to /api/assign, using the exact
+   "Court N" identity the seeded config's courts are keyed by. */
+function assign(lgName, id, court) {
+  const m = findM(lgName, id);
+  const before = {status: m.status, court: m.court};
+  m.court = "Court " + court;
+  if (m.status === "eligible") m.status = "on_court";
+  m.since = 0;
+  S.sel = {league: lgName, id};
+  closeBlade();
+  $("bub2").classList.remove("in");
+  /* the picker closes; the match itself stays up wearing its new court,
+     which is the receipt. Coming from a free court there was no match
+     bubble to keep, so that one closes. */
+  if (S.bubOn) { draw(); redrawBubble(); } else { closeBubble(); draw(); }
+  syncOrRevert(
+    api("/api/assign", {league: lgName, match: id, court: "Court " + court}),
+    () => Object.assign(m, before),
+    `could not assign court ${court}`);
+  toast(`court ${court}`, () => {
+    Object.assign(m, before);
+    syncOrRevert(api("/api/undo", {}), () => {}, "undo did not reach the server");
+  });
+}
+
+/* the other half of assign() -- freeing a court back up without touching
+   a result, so a stuck operator (every court full, something more urgent
+   needs one) has a real way out. Same optimistic-then-sync shape: the
+   court clears on this same tap, the POST follows in the background, and
+   a rejection (see syncOrRevert) puts it right back. */
+function unassign(lgName, id) {
+  const m = findM(lgName, id);
+  const before = {status: m.status, court: m.court};
+  m.court = "";
+  if (m.status === "on_court") m.status = "eligible";
+  S.sel = {league: lgName, id};
+  closeBlade();
+  $("bub2").classList.remove("in");
+  if (S.bubOn) { draw(); redrawBubble(); } else { closeBubble(); draw(); }
+  syncOrRevert(
+    api("/api/unassign", {league: lgName, match: id}),
+    () => Object.assign(m, before),
+    "could not unassign the court");
+  toast("court unassigned", () => {
+    Object.assign(m, before);
+    syncOrRevert(api("/api/undo", {}), () => {}, "undo did not reach the server");
+  });
+}
+
+function openBlade(title, body) {
+  $("bt").textContent = title;
+  $("bb").innerHTML = body;
+  $("blade").classList.add("in");
+  $("scrim").classList.add("in");
+}
+function closeBlade() { $("blade").classList.remove("in"); $("scrim").classList.remove("in"); }
+
+function openConfig() {
+  openBlade("Tonight", `
+    <div class="qm" style="margin:2px 0 7px">Layout — where the panes sit</div>
+    ${LAYOUTS.map(l => `<button class="crow ${S.layout === l.id ? "on" : ""}"
+        onclick="setLayout('${l.id}')">
+      <span class="sw">${S.layout === l.id ? "✓" : ""}</span>${esc(l.name)}
+      <span style="color:var(--faint);font-size:12px;margin-left:auto">${esc(l.why)}</span>
+      </button>`).join("")}
+    <div class="qm" style="margin:16px 0 7px">Leagues — off means no screens in the loop</div>
+    ${S.leagues.map((l, i) => `<button class="crow ${l.on ? "on" : ""}" onclick="toggleLeague(${i})">
+      <span class="sw">${l.on ? "✓" : ""}</span>${esc(l.name)}</button>`).join("")}
+    <div class="qm" style="margin:16px 0 7px">Screens — off means skipped in the rotation</div>
+    ${S.screens.map((s, i) => `<button class="crow ${s.on ? "on" : ""}" onclick="toggleScreen(${i})">
+      <span class="sw">${s.on ? "✓" : ""}</span>${esc(s.t)} <span style="color:var(--faint);
+        font-size:12px;margin-left:auto">${esc(s.lg || "")}</span></button>`).join("")}
+    <div class="qm" style="margin:16px 0 7px">Demo mode — preview the playoff board on any night</div>
+    <button class="crow ${S.demoOn ? "on" : ""}" onclick="toggleDemo()">
+      <span class="sw">${S.demoOn ? "✓" : ""}</span>Show board.html on the TV
+      <span style="color:var(--faint);font-size:12px;margin-left:auto">${S.demoOn ? "previewing" : "off"}</span></button>`);
+}
+function toggleLeague(i) {
+  const l = S.leagues[i];
+  l.on = !l.on;
+  S.screens.filter(s => s.lg === l.name).forEach(s => s.on = l.on);
+  openConfig(); draw();
+  syncOrRevert(api("/api/board", {action: "toggleLeague", league: l.name}),
+    () => { l.on = !l.on; S.screens.filter(s => s.lg === l.name).forEach(s => s.on = l.on); openConfig(); draw(); },
+    "toggle that league");
+  toast(`${l.name} ${l.on ? "on" : "off"} the board`, () => {
+    l.on = !l.on; openConfig(); draw();
+    syncOrRevert(api("/api/board", {action: "toggleLeague", league: l.name}), () => {}, "undo did not reach the server");
+  });
+}
+function toggleScreen(i) {
+  const s = S.screens[i];
+  s.on = !s.on;
+  openConfig(); drawFoot();
+  syncOrRevert(api("/api/board", {action: "toggleScreen", league: s.lg, kind: s.kind}),
+    () => { s.on = !s.on; openConfig(); drawFoot(); }, "toggle that screen");
+  toast(`${s.t} ${s.on ? "in" : "out of"} the loop`, () => {
+    s.on = !s.on; openConfig(); drawFoot();
+    syncOrRevert(api("/api/board", {action: "toggleScreen", league: s.lg, kind: s.kind}), () => {}, "undo did not reach the server");
+  });
+}
+/* Flips the server's single demo-mode boolean -- see httpapi/demo.go.
+   gamenight.html and board.html each poll GET /api/demo on their own
+   5s loop and redirect themselves, so nothing else here has to push a
+   navigation to the TV; this only has to make the toggle's own state
+   correct, exactly like toggleLeague/toggleScreen above. */
+function toggleDemo() {
+  S.demoOn = !S.demoOn;
+  openConfig();
+  syncOrRevert(api("/api/demo", {on: S.demoOn}),
+    () => { S.demoOn = !S.demoOn; openConfig(); },
+    "toggle demo mode");
+  toast(`demo mode ${S.demoOn ? "on" : "off"}`, () => {
+    S.demoOn = !S.demoOn; openConfig();
+    syncOrRevert(api("/api/demo", {on: S.demoOn}), () => {}, "undo did not reach the server");
+  });
+}
+
+/* ── the board's own strip ──────────────────────────────────────── */
+function live() { return S.screens.filter(s => s.on); }
+function drawFoot() {
+  const cur = S.current && S.screens.find(s => s.lg === S.current.league && s.kind === S.current.kind);
+  /* Tappable, not just a label: the undo toast is the only OTHER way to
+     stop an announcement, and it vanishes after a few seconds -- once
+     it's gone there was no way back short of a server restart. This is
+     the persistent, always-available exit. */
+  $("fscr").innerHTML = S.announcing
+    ? `<button onclick="stopAnnouncing()" style="color:var(--time)" title="stop announcing">announcing — tap to stop</button>`
+    : cur ? `${esc(cur.t)} <span style="color:var(--pend)">${esc(cur.lg || "")}</span>` : "nothing on";
+  $("fhold").classList.toggle("on", S.hold);
+  $("fslow").classList.toggle("on", S.slow);
+
+  /* the ribbon: one small icon per live screen, in order, the one
+     matching S.current visibly picked out so a controller can watch it
+     track the board's own advance without reading text. */
+  $("ribbon").innerHTML = live().map(s => {
+    const on = S.current && s.lg === S.current.league && s.kind === S.current.kind;
+    return `<button class="ribicon ${on ? "on" : ""}" onclick="jump('${esc(s.lg)}','${s.kind}')"
+        title="${esc(s.t)} — ${esc(shortLg(s.lg))}">
+      <span class="k">${s.kind}</span><span class="lg">${esc(shortLg(s.lg))}</span>
+    </button>`;
+  }).join("");
+}
+function step(d) {
+  drawFoot(); // instant feedback; the next refreshBoard() poll confirms
+  /* nothing local was optimistically changed above (step doesn't know
+     what's next without the server), so a failed POST has nothing to
+     revert -- syncOrRevert always calls revert(), so this has to be a
+     no-op function, not null, matching every other call site in the file. */
+  syncOrRevert(api("/api/board", {action: d > 0 ? "next" : "prev"}), () => {},
+    d > 0 ? "advance the board" : "step the board back");
+  toast(d > 0 ? "next screen" : "back a screen", null);
+}
+function hold() {
+  S.hold = !S.hold;
+  drawFoot();
+  syncOrRevert(api("/api/board", {action: S.hold ? "hold" : "release", seq: nextSeq()}),
+    () => { S.hold = !S.hold; drawFoot(); }, "hold the board");
+  toast(S.hold ? "board held" : "hold released", null);
+}
+function slower() {
+  S.slow = !S.slow;
+  drawFoot();
+  syncOrRevert(api("/api/board", {action: S.slow ? "slower" : "normal", seq: nextSeq()}),
+    () => { S.slow = !S.slow; drawFoot(); }, "slow the board");
+  toast(S.slow ? "slowed" : "normal speed", null);
+}
+function jump(lg, kind) {
+  const was = S.current;
+  S.current = {league: lg, kind};
+  drawFoot();
+  syncOrRevert(api("/api/board", {action: "jump", league: lg, kind, seq: nextSeq()}),
+    () => { S.current = was; drawFoot(); }, "jump to that screen");
+}
+
+/* Turning the tablet changes the tree's box, and the box is the layout.
+   Debounced, because iOS fires resize repeatedly through the rotation. */
+let rzT;
+addEventListener("resize", () => {
+  clearTimeout(rzT);
+  rzT = setTimeout(() => { applyLayout(); draw(); }, 140);
+});
+
+/* ── the phone's tree overlay ───────────────────────────────────── */
+function showTree(on) {
+  $("ztree").classList.toggle("in", on);
+  $("scrim").classList.toggle("in", on);
+  if (on) drawTree();          /* the overlay is a different width */
+}
+function showMatrix(on) {
+  $("zmatrix").classList.toggle("in", on);
+  $("scrim").classList.toggle("in", on);
+}
+
+/* ── the acknowledgement ────────────────────────────────────────── */
+let tid;
+function toast(t, back) {
+  S.undo = back ? {back} : null;
+  $("tt").textContent = t;
+  $("toast").querySelector(".u").style.display = back ? "" : "none";
+  $("toast").classList.add("up");
+  clearTimeout(tid);
+  tid = setTimeout(() => $("toast").classList.remove("up"), back ? 5000 : 1800);
+}
+function undo() {
+  if (!S.undo) return;
+  S.undo.back();
+  S.undo = null;
+  $("toast").classList.remove("up");
+  draw();
+  toast("undone", null);
+}
+
+/* ── chips ──────────────────────────────────────────────────────── */
+function drawChips() {
+  /* WHAT IS THIS LEAGUE WAITING ON ME FOR -- played out of total was
+     true and useless: it never changed what she did next. A tick means
+     the league is running itself, which is the only other state.
+     Unscoped (everyLeague=true) on purpose: every chip's own badge,
+     including this one's, has to hold regardless of which tab is
+     currently selected. */
+  const {results, courts} = inbox(true);
+  const need = new Map();
+  for (const e of [...results, ...courts])
+    need.set(e.l.name, (need.get(e.l.name) || 0) + 1);
+  const allN = results.length + courts.length;
+  const allChip = `<button class="lchip ${S.lg === ALL ? "on" : ""}"
+      onclick="S.lg=${ALL};draw()">All
+      <span class="act ${allN ? "" : "clear"}">${allN || "&#10003;"}</span></button>`;
+  $("chips").innerHTML = allChip + S.leagues.map((l, i) => {
+    const n = need.get(l.name) || 0;
+    return `<button class="lchip ${i === S.lg ? "on" : ""} ${l.on ? "" : "off"}"
+      onclick="S.lg=${i};draw()">${esc(shortLg(l.name))}
+      <span class="act ${n ? "" : "clear"}">${n || "&#10003;"}</span></button>`;
+  }).join("");
+}
+const shortLg = n => n.replace(/^Coed 4s /, "");
+
+/* A cross-filter that lights something up outside the viewport (a team
+   three pages down the rail, a match scrolled past in the matrix) is
+   invisible in exactly the way that makes someone think the tap did
+   nothing. Compared against the PREVIOUS selection, not just "truthy",
+   so a poll-triggered redraw with the same S.sel never re-scrolls
+   something the volunteer has since scrolled away from on purpose. */
+let lastSelKey = undefined;
+const draw = () => {
+  drawChips(); drawCourts(); drawMatrix(); drawTree(); drawInbox(); drawFoot();
+  const selKey = S.sel ? JSON.stringify(S.sel) : null;
+  if (selKey !== lastSelKey) {
+    lastSelKey = selKey;
+    if (S.sel) {
+      const it = document.querySelector("#inbox .it.hl");
+      if (it) it.scrollIntoView({block: "nearest", behavior: "smooth"});
+      const tr = document.querySelector("#matrix .tr.hl");
+      if (tr) tr.scrollIntoView({block: "nearest", behavior: "smooth"});
+    }
+  }
+};
+
+/* ── the real server, not a fixture ──────────────────────────────────
+   Every mutation posts here and every screen redraws from what it
+   answers back — GET /api/brackets is the same LeagueBracket shape the
+   fixture used to fake, straight off the event log. */
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    let msg = "HTTP " + r.status;
+    try { msg = (await r.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+/* Re-derives S.leagues from the server, merging into existing entries so
+   .on (config: is this league in the loop) survives a poll. since is 0,
+   honestly, rather than fabricated: a live elapsed-time read needs the
+   assign event's real timestamp, which /api/brackets does not carry yet
+   (open item, see docs/design/control-surface.md).
+
+   Falls back to the captured fixture when no live server answers — same
+   three-source idea board-data.js already uses, so a state can still be
+   reviewed and screenshotted (?sel=, ?win=, ...) with nothing running.
+   Only reads fall back this way: assign()/pickWinnerOn()/etc. still POST
+   for real and surface a toast if that has nothing to talk to. */
+async function refreshBrackets() {
+  let f;
+  try {
+    f = await apiGet("/api/brackets");
+  } catch {
+    f = await apiGet("data/playoff-2026-09-15.json");
+  }
+  for (const l of f.leagues) {
+    let entry = S.leagues.find(x => x.name === l.name);
+    if (!entry) {
+      entry = {name: l.name, format: l.format, on: true};
+      S.leagues.push(entry);
+    }
+    /* Merged into the SAME match objects by id, in place, rather than a
+       fresh array every poll -- an optimistic update's toast closes over
+       one of these objects directly (see pickWinnerOn/assign/clearResult
+       above), and a wholesale swap would detach it from what draw()
+       actually renders, silently breaking undo mid-toast. */
+    entry.matches = entry.matches || [];
+    for (const nm of l.matches) {
+      let m = entry.matches.find(x => x.id === nm.id);
+      if (!m) { m = {}; entry.matches.push(m); }
+      Object.assign(m, nm, {since: 0});
+    }
+  }
+}
+/* S.screens/current/hold/slow/announcing all come from the server now,
+   never invented locally -- this is what makes reaching a championship
+   (a Final screen that refreshBrackets() never used to add at all) and a
+   colleague's jump/hold on a DIFFERENT device both show up here. */
+async function refreshBoard() {
+  let view;
+  try {
+    view = await apiGet("/api/board");
+  } catch {
+    view = {screens: [], current: null, hold: false, slow: false, announcing: null};
+  }
+  S.screens = view.screens.map(s => ({lg: s.league, kind: s.kind, t: s.title, on: s.on}));
+  S.current = view.current; // {league, kind} | null
+  S.hold = view.hold;
+  S.slow = view.slow;
+  S.announcing = view.announcing;
+
+  /* S.leagues[].on is never trusted as locally-invented -- refreshBrackets()
+     only sets it once, on first creation, so left alone it drifts from the
+     server's real per-league off state (e.g. a reload after a league was
+     toggled off server-side would otherwise keep reading stale-on here).
+     Re-derive it from the screens this SAME poll just fetched: a league is
+     "on" if any of its live screens are on. Only overwrite when this
+     league actually has screens yet -- between polls, or for a
+     brand-new entry with nothing in S.screens yet, leave .on at whatever
+     it already is rather than incorrectly flipping it to false. */
+  for (const l of S.leagues) {
+    const forLeague = S.screens.filter(s => s.lg === l.name);
+    if (forLeague.length) l.on = forLeague.some(s => s.on);
+  }
+}
+/* S.demoOn mirrors GET /api/demo the same way S.hold/S.slow mirror
+   GET /api/board -- kept fresh by the same periodic poll (see the
+   setInterval below), so the settings blade reads a value that is
+   never more than one poll interval stale, without a dedicated fetch
+   of its own every time the blade opens. */
+async function refreshDemo() {
+  try {
+    S.demoOn = (await apiGet("/api/demo")).on;
+  } catch {
+    /* leave S.demoOn at whatever it already was -- same "server
+       unreachable for a beat" tolerance as refreshBoard() above */
+  }
+}
+async function apiGet(path) {
+  const r = await fetch(path, {cache: "no-store"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+/* Fired once, unconditionally, on every load -- not gated on "is this the
+   first time," since the server-side comparison against the current
+   config_set sequence already makes repeat calls harmless (see
+   docs/superpowers/specs/2026-08-29-zero-config-networking-design.md).
+   This is what tells boot.html's QR overlay it can stop showing itself:
+   silent and best-effort, never blocks startup, never retried, never
+   surfaced to the operator. */
+fetch("/api/controller-connected", {method: "POST"}).catch(() => {});
+
+/* Fire-and-forget, same as the controller-connected ping above: demo
+   mode has nothing to do with whether any leagues are configured yet,
+   so it must not be gated behind (or delay) the leagues-required chain
+   below. */
+refreshDemo();
+
+refreshBrackets()
+  .then(() => {
+    if (!S.leagues.length) throw new Error("no leagues configured yet — POST /api/config first");
+    return refreshBoard();
+  })
+  .then(() => {
+    /* ?click=<selector> — drive a REAL tap on the first match, so a
+       review shot goes through the same event path a finger does rather
+       than a hand-rolled one. The last version of that shortcut passed
+       its own rectangle and hid a positioning bug for a whole round. */
+    const clicker = () => {
+      const c = ARG.get("click");
+      const el = c && document.querySelector(c);
+      if (el) el.click();
+    };
+    if (ARG.get("layout") && LAYOUTS.some(l => l.id === ARG.get("layout")))
+      S.layout = ARG.get("layout");
+    applyLayout();
+    if (ARG.get("tree")) S.tree = ARG.get("tree");
+    if (ARG.get("lg")) {
+      const i = S.leagues.findIndex(l => l.name === ARG.get("lg"));
+      if (i >= 0) S.lg = i;
+    }
+
+    /* Polled every 5s, same interval the design settled on for /display —
+       a second controller, or this same tablet reloading a stale tab,
+       both converge on the server's own state rather than drifting. */
+    setInterval(() => { Promise.all([refreshBrackets(), refreshBoard(), refreshDemo()]).then(draw).catch(() => {}); }, 5000);
+
+    const free = Number(ARG.get("free"));
+    const pre = Number(ARG.get("sel"));
+    if (!pre) {
+      draw();
+      if (free) popWaiting(free, {currentTarget: document.querySelector(".ct.free")});
+      clicker();
+      return;
+    }
+    const lgName = ARG.get("lg") || S.leagues[0].name;
+    S.sel = {league: lgName, id: pre};
+    S.lg = Math.max(0, S.leagues.findIndex(l => l.name === lgName));
+    draw();
+    const el = document.querySelector(`[data-m="${lgName}#${pre}"]`);
+    const r = el ? el.getBoundingClientRect()
+                 : {left: innerWidth / 2, right: innerWidth / 2, top: 200};
+    openBubble(lgName, pre, r);
+    if (ARG.get("pick")) popCourts(lgName, pre);
+    if (ARG.get("say")) popAnnounce(lgName, pre,
+      {currentTarget: $("bub").querySelector(".mic")});
+    if (ARG.get("win") !== null) toggleWinner(lgName, pre, Number(ARG.get("win")));
+    clicker();
+  })
+  .catch(e => { $("body").innerHTML = `<div class="hint">Could not read the night
+    (${esc(e.message)}). Is the server running? Serve over HTTP.</div>`; });
+</script>
+</body>
+</html>

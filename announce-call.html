@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Announce — on the board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     announce-call.html — the "announce" board screen (control-the-
+     brief.md §6, §9): a board screen NOT in the rotation, popped by
+     the coordinator's mic button in control2.html (popAnnounce/
+     announceOn/announceLeague), held until she releases it, read
+     aloud in the order she says it — league, both teams, court.
+
+     THIS DIRECTION: the same court card every other live screen in
+     this project already uses (gamenight.html's cardHTML/bodyHTML —
+     slab, league tag, team names, a "vs" rule, a state tag), just at
+     whatever scale fills the screen given how many matches are
+     actually live. A specific match (announceOn, popAnnounce's "just
+     this match") is a grid of exactly one, as large as the frame
+     allows. A whole league (announceLeague, "N up") is that same
+     card repeated once per match currently on_court for that league,
+     sized down only as far as the count actually requires. There is
+     no separate "single" vs "grid" MODE to pick wrong: the layout is
+     purely a function of how many matches pickLive() finds, which is
+     itself purely a function of whether the URL named one match or a
+     whole league.
+
+     Tokens, fonts and the COURT table are lifted verbatim from
+     gamenight.html / board-data.js — no new palette, no CDN (local
+     fonts/fonts.css, the venue has no uplink).
+
+     Stage is a fixed 1920x1080 box scaled to fit the viewport, same
+     trick gamenight.html/broadcast.html use.
+     ═══════════════════════════════════════════════════════════════ -->
+
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: #05070C; overflow: hidden; }
+body {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+#stage{
+  --ground:#101A2C; --surface:#1A263C; --raised:#24334E; --line:#2B3A54;
+  --ink:#FFFFFF; --dim:#8E99AB;
+  --live:#FF00A0; --won:#8CC63F; --pend:#2E9BFF; --time:#FFC400; --mark:#8CC63F;
+  --on-fill:#06070A; --sand:#D9C9A3;
+  --cut:18px; --ease:cubic-bezier(0.16,1,0.3,1);
+
+  position:absolute;top:50%;left:50%;width:1920px;height:1080px;transform-origin:center;
+  background:var(--ground);color:var(--ink);overflow:hidden;
+}
+#safe{position:absolute;inset:4.2% 4%;display:flex;flex-direction:column;z-index:2}
+
+.slash{position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(115deg,transparent 60%,rgba(46,155,255,.045) 60%,rgba(46,155,255,.045) 76%,transparent 76%)}
+
+.ontag{position:absolute;top:0;right:var(--cut);z-index:3;
+  background:var(--time);color:var(--on-fill);
+  font-weight:700;font-size:20px;letter-spacing:.22em;text-transform:uppercase;
+  padding:8px 22px 9px;
+  clip-path:polygon(0 0,100% 0,100% 100%,14px 100%,0 calc(100% - 14px));
+}
+
+.kicker{position:relative;z-index:2;text-align:center;flex:none;
+  font-weight:600;font-size:32px;letter-spacing:.3em;text-transform:uppercase;color:var(--pend)}
+
+/* ── the court card — gamenight.html's cardHTML/bodyHTML, unchanged
+   in shape, scaled up by however much room N cards leaves it ─────── */
+#slate{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;
+  gap:var(--gap,32px);margin-top:18px;flex-wrap:wrap}
+/* 3 up (or more) is a real grid, capped at 3 columns -- a 4th, 7th, etc.
+   always starts a new row, rather than however many happen to fit the
+   available width, which is what flex-wrap alone would give and isn't
+   deterministic as the match count grows. 1 and 2 stay flex (above):
+   there's no "column limit" question until there's a row to wrap. */
+#slate[data-n="3plus"]{display:grid;grid-template-columns:repeat(3,var(--cardw));
+  grid-auto-rows:min-content;justify-content:center;align-content:center}
+.card{
+  position:relative;overflow:hidden;background:var(--surface);
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),
+                    100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)));
+  /* slab reservation goes on the LEFT, where the slab actually sits --
+     content-driven height (no explicit height at all), same as every
+     other card in this project: padding around natural content height,
+     not an arbitrary number that leaves the middle of the card empty. */
+  padding:var(--cardpad,28px) var(--cardpad,28px) var(--cardpad,28px) calc(var(--slabw,180px) + 34px);
+  display:flex;align-items:center;flex:0 0 var(--cardw,1700px);
+}
+.slab{position:absolute;left:0;top:0;bottom:0;width:var(--slabw,180px);z-index:1;
+  background:var(--ct);display:grid;place-items:center}
+.card.faint .slab{box-shadow:inset 0 0 0 5px rgba(217,201,163,.5)}
+.cnum{font-family:"Archivo Black",Impact,sans-serif;font-size:var(--cnum,150px);line-height:1;color:var(--ct-ink)}
+.cname{margin-top:6px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ct-ink);opacity:.72;font-size:var(--cname,20px)}
+
+.body{position:relative;z-index:1;flex:1;min-width:0;
+  display:flex;flex-direction:column;gap:var(--bodygap,18px)}
+.tophat{display:flex;gap:14px;align-items:center;min-width:0}
+.lgtag{flex:none;font-size:var(--lgtag,22px);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--pend);border:2px solid var(--line);padding:4px 16px;white-space:nowrap}
+.ctname{font-size:var(--ctname,18px);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+.teams{position:relative}
+/* stacked, not side-by-side with the captain: a long team name sharing
+   one baseline with its captain had to shrink for BOTH, collapsing the
+   one thing this card exists to make big. Stacked, the team name sizes
+   against the card's full width regardless of the captain's length. */
+.side{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;padding:6px 0}
+.tname{text-transform:uppercase;font-weight:700;font-size:var(--tname,68px);letter-spacing:.01em;
+  line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.capn{font-size:var(--capn,24px);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+  white-space:nowrap;flex:none}
+.rule{position:relative;height:3px;margin:8px 0;background:var(--line)}
+.vs{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:var(--surface);
+  color:var(--dim);font-size:var(--vs,18px);font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;padding:0 12px;line-height:1.4}
+.statetag{position:absolute;right:var(--cut);top:0;z-index:3;background:var(--live);color:var(--on-fill);
+  font-size:var(--statetag,19px);font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  padding:5px 16px 6px}
+
+/* card count -> how large a card gets to be, so one match fills the
+   frame and four don't overflow it. Height is never set directly (see
+   .card above) -- it falls out of these sizes plus content, the same
+   way every other card in this project sizes itself. */
+#slate[data-n="1"]{--cardw:1750px;--slabw:220px;--cnum:190px;--cname:24px;
+  --tname:96px;--capn:32px;--lgtag:26px;--ctname:22px;--vs:22px;--statetag:22px;--bodygap:22px;--cardpad:34px}
+#slate[data-n="2"]{--cardw:860px;--slabw:170px;--cnum:140px;--cname:20px;
+  --tname:64px;--capn:24px;--lgtag:22px;--ctname:18px;--vs:18px;--statetag:19px;--bodygap:18px;--cardpad:28px}
+/* 3, 4, 5, 6... all share this one size: capped at 3 columns (see
+   #slate[data-n="3plus"] above), a 4th+ match only ever adds another
+   ROW at this same per-card size, never a smaller one -- each row still
+   only ever has up to 3 cards sharing the width a 3-card row always had. */
+#slate[data-n="3plus"]{--cardw:560px;--slabw:130px;--cnum:104px;--cname:16px;
+  --tname:44px;--capn:19px;--lgtag:18px;--ctname:15px;--vs:15px;--statetag:16px;--bodygap:14px;--cardpad:22px;--gap:24px}
+
+/* ── dev controls, not part of the display ─────────────────────── */
+#ctl{
+  position:fixed;right:14px;bottom:14px;z-index:60;display:flex;gap:8px;
+  opacity:.32;transition:opacity 180ms cubic-bezier(0.16,1,0.3,1);
+}
+#ctl:hover,#ctl:focus-within{opacity:1}
+#ctl button{
+  background:#1A263C;color:#FFFFFF;border:1px solid #2B3A54;
+  font:600 13px "Barlow Condensed",sans-serif;letter-spacing:.08em;text-transform:uppercase;
+  padding:8px 14px;cursor:pointer;
+}
+#ctl button:hover{border-color:#2E9BFF}
+#ctl button.on{background:#2E9BFF;color:#06070A;border-color:#2E9BFF;font-weight:700}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div class="slash"></div>
+  <div id="safe">
+    <span class="ontag">Announcing</span>
+    <div class="kicker" id="kicker">Coed 4s Upper Rec</div>
+    <div id="slate"></div>
+  </div>
+</div>
+
+<!-- dev-only: force the fallback demo to a specific match count, to
+     review every card size without a live server. Has no effect once
+     refreshLive() gets a real answer -- see forceCount below. -->
+<div id="ctl">
+  <button id="bN1">1 up</button>
+  <button id="bN2" class="on">2 up</button>
+  <button id="bN3">3 up</button>
+  <button id="bN4">4 up</button>
+</div>
+
+<!-- Routes /api/ to the in-browser server when (and only when) this page is
+     framed by demo.html. Completely inert on the real box. -->
+<script src="api-shim.js"></script>
+<script>
+const COURT = {
+  1:  {name:"lime green", hex:"#8CC63F", ink:"#0A0A0A"},
+  2:  {name:"orange",     hex:"#F2872F", ink:"#0A0A0A"},
+  3:  {name:"blue",       hex:"#2F72C4", ink:"#FFFFFF"},
+  4:  {name:"maroon",     hex:"#8E2F3F", ink:"#FFFFFF", faint:true},
+  5:  {name:"dark green", hex:"#1F6B3A", ink:"#FFFFFF"},
+  6:  {name:"yellow",     hex:"#F2CE2F", ink:"#0A0A0A"},
+  7:  {name:"black",      hex:"#151515", ink:"#FFFFFF", faint:true},
+  8:  {name:"pink",       hex:"#E86FA8", ink:"#0A0A0A"},
+  9:  {name:"purple",     hex:"#8455C4", ink:"#FFFFFF"},
+  10: {name:"white",      hex:"#F4F4F2", ink:"#0A0A0A"},
+  11: {name:"red",        hex:"#D93A32", ink:"#FFFFFF"},
+  12: {name:"tan",        hex:"#C9A87C", ink:"#0A0A0A"},
+};
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+/* Fallback demo, shown until (and whenever) no live server answers. */
+const DEMO = {lg:"Coed 4s Upper Rec", matches:[
+  {c:10, h:"Gold Star for Effort", hc:"Merilyn V.", a:"The Volleybeaners", ac:"Emanuel N."},
+  {c:11, h:"Sets Pistols",         hc:"Christina Z.",a:"BLT",              ac:"Sean B."},
+  {c:12, h:"What Court Are We On?",hc:"Bear S.",     a:"Offense Only",     ac:"Zhen Y."},
+]};
+let LIVE = null; // set once refreshLive() gets a real answer; overrides DEMO/forceCount entirely
+let forceCount = 2; // dev-only, see #ctl above
+
+/* ── the real server, when one answers ───────────────────────────
+   ?league=&match= say what to show: a specific match (announceOn,
+   "just this match") or a whole league (announceLeague, no match id
+   at all -- "all ... now on court"). Both resolve to the same shape,
+   {lg, matches}, because the card grid is just "how many matches",
+   never a separate single-vs-grid mode to pick wrong. */
+const courtNumOf = s => { const m = /(\d+)\s*$/.exec(s || ""); return m ? +m[1] : 0; };
+function toMatch(m) {
+  return { c: courtNumOf(m.court), h: m.slots[0].team, hc: m.slots[0].cap, a: m.slots[1].team, ac: m.slots[1].cap };
+}
+function pickLive(f) {
+  const q = new URLSearchParams(location.search);
+  const wantLg = q.get("league"), wantId = q.get("match") ? Number(q.get("match")) : null;
+  for (const lg of f.leagues) {
+    if (wantLg && lg.name !== wantLg) continue;
+    const onCourt = lg.matches.filter(x => x.status === "on_court");
+    const matches = wantId ? onCourt.filter(x => x.id === wantId) : onCourt;
+    if (matches.length) return { lg: lg.name, matches: matches.map(toMatch) };
+  }
+  return null;
+}
+async function refreshLive() {
+  const r = await fetch("/api/brackets", {cache: "no-store"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const found = pickLive(await r.json());
+  if (found) LIVE = found;
+}
+
+/* measured, not guessed: shrink a nowrap name until it fits the box it
+   actually landed in -- a fixed size cannot survive both "BLT" and
+   "Not Good at Volleyball Puns" on the same card. Measures against
+   `measureEl` (the whole .side row, name + captain together) but
+   shrinks the font on `el` (.tname only) -- a captain name sharing the
+   row is real space .tname doesn't have, and measuring .tname alone
+   against the row's full width let it stop shrinking too early. */
+function fitText(el, maxPx, minPx, step, measureEl, boxEl) {
+  measureEl = measureEl || el;
+  const box = boxEl || el.parentElement;
+  el.style.whiteSpace = "nowrap";
+  let px = maxPx;
+  el.style.fontSize = px + "px";
+  requestAnimationFrame(() => {
+    while (measureEl.scrollWidth > box.clientWidth - 2 && px > minPx) {
+      px -= step;
+      el.style.fontSize = px + "px";
+    }
+  });
+}
+
+/* ── the card itself — gamenight.html's cardHTML/bodyHTML, unchanged
+   in shape and class names, so this is the SAME card every other
+   live screen in the project already uses, not a lookalike. */
+function side(name, cap) {
+  return `<div class="side"><span class="tname">${esc(name)}</span>`
+    + (cap ? `<span class="capn">${esc(cap)}</span>` : "") + `</div>`;
+}
+function cardHTML(m) {
+  const c = COURT[m.c] || {name: "", hex: "#333", ink: "#fff"};
+  return `<article class="card${c.faint ? " faint" : ""}" style="--ct:${c.hex};--ct-ink:${c.ink}">
+    <div class="slab"><span class="cnum">${m.c}</span><span class="cname">${esc(c.name)}</span></div>
+    <div class="body">
+      <div class="tophat"><span class="ctname">${esc(c.name)}</span></div>
+      <div class="teams">
+        ${side(m.h, m.hc)}
+        <div class="rule"><span class="vs">vs</span></div>
+        ${side(m.a, m.ac)}
+      </div>
+    </div>
+    <span class="statetag">Live</span>
+  </article>`;
+}
+
+const stage = document.getElementById("stage");
+const slate = document.getElementById("slate");
+
+function render() {
+  const data = LIVE || {lg: DEMO.lg, matches: DEMO.matches.slice(0, forceCount)};
+  document.getElementById("kicker").textContent =
+    data.matches.length > 1 ? `${data.lg} · ${data.matches.length} on court` : data.lg;
+  const n = data.matches.length;
+  slate.dataset.n = n === 1 ? "1" : n === 2 ? "2" : "3plus";
+  slate.innerHTML = data.matches.map(cardHTML).join("");
+  slate.querySelectorAll(".tname").forEach(tname => {
+    const maxPx = parseFloat(getComputedStyle(slate).getPropertyValue("--tname")) || 68;
+    /* Just tname against its real container now -- the captain name
+       stacks on its own line below (see .side), so it no longer shares
+       tname's line and doesn't need to be included in the measurement. */
+    fitText(tname, maxPx, 18, 2, tname, tname.closest(".teams"));
+  });
+}
+
+refreshLive().catch(() => {}).then(render);
+/* live, polled the same 5s every other wired screen uses; falls back to
+   whatever LIVE already held (or the DEMO fixture) when the server
+   stops answering mid-night. */
+setInterval(() => refreshLive().catch(() => {}).then(render), 5000);
+
+/* dev-only count buttons, disabled once a live server has answered
+   (LIVE is then the only source of truth, matching the real page). */
+[["bN1",1],["bN2",2],["bN3",3],["bN4",4]].forEach(([id, n]) => {
+  document.getElementById(id).onclick = e => {
+    forceCount = n;
+    document.querySelectorAll("#ctl button").forEach(b => b.classList.remove("on"));
+    e.target.classList.add("on");
+    if (!LIVE) render();
+  };
+});
+
+/* fit the fixed stage to whatever screen shows it */
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stage.style.transform = `translate(-50%,-50%) scale(${s})`;
+}
+addEventListener("resize", fit);
+fit();
+</script>
+</body>
+</html>

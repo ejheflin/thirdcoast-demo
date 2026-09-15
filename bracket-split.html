@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Split brackets — a screen each</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  ONE SCREEN PER BRACKET. The winners tree gets a screen, the losers tree
+  gets a screen, and the rotation shows them in turn.
+
+  This is what the venue's own paper bracket does — see
+  reference/brackets/ — two separate trees, cross-referenced by NAME
+  rather than by line: every winners match is tagged with the losers slot
+  its loser falls into, and there is not one connector drawn between the
+  two brackets on the whole page.
+
+  Splitting fixes three things at once, all of which came from the two
+  brackets sharing a column:
+
+  1. A semi can sit between the two matches that feed it. Sharing put
+     four losers matches in the same column as two semis, so the winners
+     lane got a third of the column while its feeders spread across all
+     of it — a 417px centring error, measured in bracket-tree.html.
+  2. No dashed loser-drops crossing the middle of the tree. A tag on the
+     card costs no space and crosses nothing.
+  3. The whole of a bracket can be on screen at once, which sizecheck
+     says is impossible for both together past 8 teams.
+
+  WHAT IT COSTS is width. Each half is five rounds wide — winners R1, R2,
+  semi, final, grand final; losers R2 through the losers final — and five
+  columns of card is a narrower card than three. The two variants below
+  are the two ways to spend that, and the captions carry the measurement
+  that decides it: how many team names get clipped.
+
+  SERVE over HTTP:  cd prototype && python -m http.server 8099
+  Single frame at 1:1:  ?shot=S4&snap=3&side=W
+  Name-fit sweep:       ?sweep=1
+-->
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* ═══ page chrome ═════════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0c;color:#e8e6ef;font-family:"Barlow Condensed",sans-serif;padding-bottom:110px}
+body.shot{padding:0;background:#000;overflow:hidden;height:100vh;display:flex;align-items:center;justify-content:center}
+#nav{position:sticky;top:0;z-index:100;background:rgba(10,10,12,.93);backdrop-filter:blur(14px);
+  border-bottom:1px solid #23232b;padding:10px 20px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#nav .brand{font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#7a7690;margin-right:8px}
+#nav a{color:#c9c5d8;text-decoration:none;font-size:13px;font-weight:600;padding:5px 9px;letter-spacing:.05em;
+  border:1px solid #2c2c36;border-radius:999px;white-space:nowrap;text-transform:uppercase}
+#nav a:hover{background:#1b1b22;border-color:#4a4a58;color:#fff}
+#nav .sep{width:1px;height:20px;background:#2c2c36;margin:0 6px}
+.wrap{max-width:1680px;margin:0 auto;padding:0 20px}
+.intro{padding:34px 0 4px;max-width:1000px}
+.intro h1{font-family:"Archivo Black",sans-serif;font-size:26px;line-height:1.2;text-transform:uppercase}
+.intro h3{font-size:17px;text-transform:uppercase;letter-spacing:.06em;margin-top:26px;color:#c9c5d8}
+.intro p{margin-top:12px;color:#9d99b0;font-size:16px;line-height:1.6}
+.intro em{color:#e8e6ef;font-style:normal}
+.intro code{background:#1b1b22;padding:2px 6px;border-radius:4px;font-size:14px}
+.intro ol{margin:12px 0 0 22px;color:#9d99b0;font-size:16px;line-height:1.6}
+.intro li{margin-top:8px}
+.snaphead{margin:50px 0 0;padding:12px 0 10px;border-bottom:1px solid #24242c;
+  display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;position:sticky;top:47px;z-index:60;
+  background:rgba(10,10,12,.96);backdrop-filter:blur(10px)}
+.snaphead h2{font-family:"Archivo Black",sans-serif;font-size:22px;text-transform:uppercase}
+.snaphead .meta{font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#7a7690}
+.vari{padding-top:26px;scroll-margin-top:112px}
+.cap{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+.cap h3{font-size:20px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+.cap h3 b{font-family:"Archivo Black",sans-serif;color:#8E99AB;margin-right:9px}
+.cap .num{font-size:13.5px;letter-spacing:.06em;text-transform:uppercase;color:#ffc400;margin-top:5px}
+.cap .blurb{color:#9d99b0;font-size:15px;line-height:1.5;flex:1 1 430px;min-width:290px}
+.frame{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:12px;
+  border:1px solid #24242c;background:#000;margin-bottom:14px}
+/* fixed 1920x1080 for an outer iframe to scale (rotation-playoff.html),
+   or -- opened directly, a kiosk browser or a laptop tab with nothing
+   wrapping it -- the largest 16:9 box the real viewport fits, letterboxed.
+   The two agree exactly when the viewport itself is 16:9. */
+body.shot .frame{width:min(100vw,177.7778vh);height:min(100vh,56.25vw);border:0;border-radius:0;margin:0}
+#err{margin:30px 0;padding:16px;border:1px solid #4a3d12;background:#1a1607;border-radius:10px;color:#e0c05a;font-size:16px;display:none}
+pre#out{font:13px/1.5 ui-monospace,monospace;white-space:pre;color:#c9c5d8;padding:20px 0}
+</style>
+
+<style>
+/* ═══ the board ═══════════════════════════════════════════════ */
+.stage{
+  --ground:#101A2C; --surface:#1A263C; --raised:#24334E; --line:#2B3A54;
+  --ink:#FFFFFF; --dim:#8E99AB;
+  --live:#FF00A0; --live-txt:#FF6EC7; --won:#8CC63F; --pend:#2E9BFF;
+  --time:#FFC400; --mark:#8CC63F; --on-fill:#06070A; --frond:#5FB0FF;
+  --wire:#6E82A8; --cut:16px;   /* gamenight --cut */
+  position:absolute;top:0;left:0;width:1920px;height:1080px;transform-origin:top left;
+  overflow:hidden;background:var(--ground);color:var(--ink);
+  font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums;
+}
+.deco{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.slash{position:absolute;inset:0;background:linear-gradient(115deg,transparent 60%,
+  rgba(255,0,160,.05) 60%,rgba(255,0,160,.05) 74%,transparent 74%)}
+.grove{position:absolute;left:0;bottom:0;width:1920px;height:420px;color:var(--frond);opacity:.10}
+.safe{position:absolute;inset:3.4% 3%;display:flex;flex-direction:column;z-index:2}
+
+.bar{display:flex;align-items:flex-end;justify-content:space-between;gap:30px}
+.venue{font-family:"Archivo Black",sans-serif;font-size:44px;line-height:1;text-transform:uppercase}
+.venue em{font-style:normal;color:var(--mark)}
+.sub,.datel,.pnote{text-transform:uppercase;letter-spacing:.13em;font-weight:600;font-size:18px;color:var(--dim)}
+.sub{margin-top:9px}
+.rt{text-align:right}
+.clock{font-family:"Archivo Black",sans-serif;font-size:38px;line-height:1;color:var(--time)}
+.datel{margin-top:8px}
+.phead{display:flex;align-items:baseline;gap:14px;margin:14px 0 6px}
+.ptitle{font-family:"Archivo Black",sans-serif;font-size:29px;line-height:1;text-transform:uppercase}
+.ptitle.L{color:var(--live-txt)}
+.pill{display:inline-block;background:var(--time);color:var(--on-fill);font-weight:700;font-size:17px;
+  padding:4px 13px 5px;line-height:1;clip-path:polygon(7px 0,100% 0,100% 100%,0 100%,0 7px)}
+.pill.lime{background:var(--won)}
+.pill.quiet{background:none;color:var(--dim);border:1px solid var(--line);padding:3px 12px 4px}
+
+.tree{flex:1;min-height:0;position:relative}
+.edges{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:visible}
+
+.mcard{
+  position:absolute;z-index:2;overflow:hidden;background:var(--surface);
+  clip-path:polygon(0 0,calc(100% - var(--cut)) 0,100% var(--cut),
+                    100% 100%,var(--cut) 100%,0 calc(100% - var(--cut)));
+  display:flex;flex-direction:column;justify-content:center;
+}
+.slab{position:absolute;left:0;top:0;bottom:0;z-index:1;
+  background:var(--ct,var(--raised));display:grid;place-items:center}
+.mcard.faint .slab{box-shadow:inset 0 0 0 2px rgba(217,201,163,.45)}
+.mcard.nocourt .slab{background:transparent;box-shadow:inset 0 0 0 2px var(--line)}
+.cnum{font-family:"Archivo Black",sans-serif;line-height:1;color:var(--ct-ink,var(--dim))}
+.mcard.nocourt .cnum{font-family:"Barlow Condensed",sans-serif;font-weight:700;color:var(--dim)}
+
+/* the team line, matched to gamenight .side / .tname: 9px gap, 2px
+   padding, .015em tracking, 1.12 line-height, and a 2px rule on 4px
+   margins */
+.side{display:flex;align-items:baseline;gap:9px;min-width:0;padding:2px 0}
+.side .sd{color:var(--dim);flex:none;font-weight:600;letter-spacing:.06em}
+.side .nm{font-weight:700;text-transform:uppercase;letter-spacing:.015em;line-height:1.12;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side.wait .nm{color:var(--pend);font-weight:600;text-transform:none}
+.side.won .nm{color:var(--won)}
+.side.lost{opacity:.4}
+/* ── how a team got onto this losers card ─────────────────────────
+   Two teams arrive at a losers match by opposite roads and looked
+   identical: one dropped out of the winners bracket, one won its way
+   through here. Pink is already the losers-bracket channel — the slot
+   names, the loser tags, the screen's own title — so a pink name reads
+   as "just came down", and a white one as "fought through".
+
+   Only while the match is undecided. Once it is played, lime-for-won
+   and drained-for-lost take the names back: a card that has a result
+   has to read as a result first. */
+.side.drop .nm{color:var(--live-txt)}
+.rule{height:2px;margin:4px 0;background:var(--line)}
+
+/* ── the tophat, as on the game-night card ────────────────────────
+   There it carries the league and the court's colour name. Here it
+   carries the losers-bracket slot name and nothing else: the league is
+   in the screen's own header, and the court's colour name was labelling
+   the slab that is already painted that colour. */
+.tophat{display:flex;gap:10px;align-items:center;min-width:0;margin-bottom:6px}
+
+/* ── state: the corner tag, and nothing else ──────────────────────
+   Held to the game-night board's channel exactly. The rule colour and
+   the card's fade say the same thing quietly; the tag is what a viewer
+   coming from the other pane already reads. */
+.statetag{position:absolute;right:var(--cut);top:0;z-index:3;
+  background:var(--live);color:var(--on-fill);
+  font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:3px 11px 4px}
+.mcard.done .statetag{background:var(--won)}
+.mcard.ready .statetag{background:var(--pend)}
+
+/* ── the cross-reference, taken from the paper bracket ────────────
+   Instead of a dashed line running across the board to a card in the
+   other bracket, the card NAMES where its loser goes, and the losers
+   screen names each of its matches. Same channel — pink is the losers
+   bracket — but it costs no space and crosses nothing.
+
+   The tag is just the slot's name — "L1", not "loser → L1". A pink L1 on
+   a winners card and a pink L1 on the losers screen are the same mark;
+   the sentence explaining it was doing no work at three times the size. */
+.dest{position:absolute;right:18px;bottom:9px;z-index:3;
+  font-family:"Archivo Black",sans-serif;letter-spacing:.02em;
+  color:var(--live-txt);opacity:.9}
+.slot{flex:none;font-family:"Archivo Black",sans-serif;color:var(--live-txt);opacity:.9}
+
+.mcard.W{background:#1C2F4C;box-shadow:inset -5px 0 0 #6FB6FF}
+.mcard.L{background:#2C2344;box-shadow:inset -5px 0 0 var(--live-txt)}
+.mcard.F{background:#2A2A16;box-shadow:inset -5px 0 0 var(--time)}
+.mcard.done{opacity:.6}
+/* No lifted fill for a live card. The game-night board carries state in
+   the corner tag alone and leaves the card's ground alone; lifting it to
+   --raised here both broke step with that card and took the seed to
+   4.40:1, under the 4.5 floor. The pink tag and the pink rule say it. */
+.mcard.live .rule{background:var(--live)}
+.mcard.done .rule{background:var(--won)}
+.mcard.ready .rule{background:var(--pend)}
+.mcard.champ{background:#16220C}
+.mcard.champ .rule{background:var(--won)}
+</style>
+</head>
+<body>
+
+<nav id="nav"><span class="brand">split brackets</span></nav>
+<div class="wrap">
+  <div class="intro">
+    <h1>A screen each</h1>
+    <p>
+      The winners tree gets a screen, the losers tree gets a screen, and the rotation shows
+      them in turn. This is what the venue's own paper bracket does — <em>two separate trees,
+      cross-referenced by name rather than by line</em>. Every winners match here carries a pink
+      tag naming the losers slot its loser falls into, and every losers match carries that slot
+      name. No connector is drawn between the two.
+    </p>
+
+    <h3>What splitting fixes</h3>
+    <ol>
+      <li><em>A semi can sit between the two matches that feed it.</em> Sharing a column put four
+        losers matches beside two semis, so the winners lane got a third of the column while its
+        feeders spread across all of it — a 417px centring error.</li>
+      <li><em>Nothing crosses the middle of the tree.</em> The dashed loser-drops are gone;
+        a tag replaces them.</li>
+      <li><em>A whole bracket fits.</em> <code>sizecheck</code> says both brackets together stop
+        fitting past 8 teams. One at a time, the whole winners tree fits at 12.</li>
+    </ol>
+
+    <h3>What it costs</h3>
+    <p>
+      Width. Each half is <em>five rounds</em> wide — winners R1, R2, semi, final and the grand
+      final; losers R2 through the losers final — and five columns of card is a narrower card
+      than three. The two variants are the two ways to spend that, and the captions carry the
+      measurement that settles it: <em>how many team names get clipped</em>, counted off the
+      rendered elements, worst case being "Save a Horse, Dig a Volleyball" at thirty characters.
+    </p>
+  </div>
+  <div id="err"></div>
+  <div id="sheet"></div>
+</div>
+
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+  <g id="frondg"><path d="M99 196c-2-42 3-79 13-112 3-9 7-18 11-26-8 7-15 16-21 26-9 15-15 33-19 52-1-24 3-45 11-63 8-17 19-30 33-38-16 1-31 8-44 20C70 68 61 85 56 106c-6-19-6-37-1-53 5-17 15-31 29-41-17 3-31 12-42 26-11 15-17 33-18 54-9-16-13-32-11-47 2-16 9-30 21-40-17 5-30 16-38 32-8 15-11 34-8 55 3 21 12 41 26 60l-9 3c-1 0-2 1-2 3 0 1 1 2 3 2l14-2c11 14 24 26 39 38h40z"/></g>
+  <symbol id="palmtree" viewBox="0 0 240 280">
+    <path d="M120 280 C 116 226 110 172 102 124 L 122 118 C 128 170 134 226 142 280 Z"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-138) scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-94)  scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-50)  scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(0)    scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(50)   scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(94)   scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(138)  scale(.62) translate(-99,-196)"/>
+    <circle cx="108" cy="130" r="7"/><circle cx="123" cy="134" r="6"/><circle cx="97" cy="136" r="6"/>
+  </symbol>
+</svg>
+
+<!-- Routes /api/ to the in-browser server when (and only when) this page is
+     framed by demo.html. Completely inert on the real box. -->
+<script src="api-shim.js"></script>
+<script src="board-data.js"></script>
+<script>
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const GROVE = [[40,300],[300,220],[620,270],[980,200],[1240,320],[1600,250]]
+  .map(([x,w]) => { const h = Math.round(w*280/240);
+    return `<use href="#palmtree" x="${x}" y="${420-h}" width="${w}" height="${h}"/>`; }).join("");
+
+/* ═══ the card, held to the game-night board's ═════════════════════
+   gamenight.html's court card is 594x166 with a 96px slab, a 54px court
+   number, a 16px cut and a 31px team name on 12/18/13 padding. A viewer
+   sees both in one rotation, so the bracket card is the same card wherever
+   the bracket does not force otherwise.
+
+   The split is what makes that affordable: one bracket per screen peaks
+   at four rows, so the column divides into 192px and a 166px card fits
+   with air to spare. On the old shared-column board it could not — six
+   rows meant 118px, and the two cards could never have matched. */
+const TAG = 20, GAPV = 30;
+/* Room at the right edge for the road that leaves the screen. The
+   winners bracket is exactly four rounds — R1, R2, semi, winners final —
+   so four columns hold all of it, and the fifth column was never part of
+   this bracket: the grand final is the winners final's winner against
+   the losers final's winner, belonging to neither tree. It gets its own
+   screen; both brackets get an arrow pointing at it. */
+const STUB = 100;
+const MAX_H = 166;          // gamenight .card, exactly
+const SLAB_PX = 96;         // gamenight --slabw
+const CUT = 16;             // gamenight --cut
+const PAD_X = 18, PAD_T = 12, PAD_B = 13;
+const CNUM = 54;            // gamenight .cnum
+
+/* ═══ the two ways to spend the width ══════════════════════════════
+   cols   — how many rounds are on screen at once. A bracket with more
+            rounds than this gets a window centred on the round in play;
+            one with fewer shows whole.
+   nameCap— ceiling on the team name. The card gets narrower as columns
+            are added, and a name that outgrows its card is silently
+            ellipsised, so this is the number that has to come down. */
+/* Each cap is the largest the card can actually hold: ?sweep=1 counts
+   clipped names across all sixteen snapshots of both screens, and one
+   step higher clips 44 of them at four columns, 64 at five. */
+/* S4e first: it is the one that was picked. The rest stay as the record
+   of what it was picked against. */
+const VARIANTS = [
+  {key:"S4e", name:"Four rounds, edge elbows, tight gutters — CHOSEN", cols:4, gutter:22,
+   elbow:"edge", nameCap:31,
+   blurb:"The whole winners bracket at the game-night board's 31px name. A connector leaves the card's right side at the level halfway between the two cards' top edges, then turns once — into the target's top a quarter of the way in from its left, or into its bottom when the target sits higher. One horizontal instead of two, so the gutter falls to 22px and the card grows from 381px to 409px: the names cut at 31px halve, from six a board to three. Cards within 24px of level are joined straight across."},
+  {key:"S3", name:"Three rounds — the game-night card, exactly", cols:3, gutter:60, nameCap:31,
+   blurb:"548×166 against the game-night board's 594×166, with the same 31px name — and nothing clipped, in any of the sixteen snapshots of either screen. No sacrifice at all: the card is simply the board's card. Each screen is a window of three rounds."},
+  {key:"S4", name:"Four rounds — the whole winners bracket, 31px", cols:4, gutter:60, nameCap:31,
+   blurb:"All four winners rounds on one screen, with the same 31px name. The card narrows to about 380px, so the longest names ellipsise — the caption says which and by how much. One format holds for every round of the night; the grand final gets its own screen at the end."},
+  {key:"S4m", name:"Four rounds, edge elbows, gutters that still read", cols:4, gutter:44,
+   elbow:"edge", nameCap:28,
+   blurb:"The same idea with the gutter backed off to 44px, because at 22px the R1-into-R2 connectors — which feed one-to-one and so have almost no vertical to draw — shrink to tick marks against the card edge. Still buys card width over the classic elbow, and pays for a 28px name."},
+  {key:"S4s", name:"Four rounds at 26px", cols:4, gutter:60, nameCap:26,
+   blurb:"The same four columns at the size where the cutting stops getting worse: 26px cuts exactly the same names as 22px would — only the genuinely long ones — while 28px starts taking the endings off ordinary names and 31px takes them off six a board. Below 26 you would be shrinking every name for nothing."},
+];
+const SHOTS = [3, 9, 15];
+
+/* ── the losers bracket's slots get names, as on paper ──────────────
+   L1..Ln in bracket order, so a winners card can say where its loser
+   goes and the losers screen can say which slot it is showing. */
+function slotNames(all) {
+  const names = {};
+  all.filter(m => m.side === "L").sort((a, b) => a.level - b.level || a.id - b.id)
+     .forEach((m, i) => names[m.id] = "L" + (i + 1));
+  return names;
+}
+
+function orderedSlots(m) {
+  if (m.winner === 0 || m.winner === 1)
+    return [{sl: m.slots[m.winner], mark: "won"}, {sl: m.slots[1 - m.winner], mark: "lost"}];
+  return [{sl: m.slots[0], mark: ""}, {sl: m.slots[1], mark: ""}];
+}
+
+/* An empty slot says where its team will come FROM — but only when that
+   match is not on this screen. When it is, a line is already drawn from
+   it, and naming it as well produced cards reading "Winner of Winners
+   Semi" twice over. The paper bracket leaves those lines blank to be
+   written in, and so does this. */
+function slotHTML(e, fs, P) {
+  const sl = e.sl;
+  if (!sl.team) {
+    if (sl.from && P.shownIds.has(sl.from))
+      return `<div class="side wait" style="font-size:${Math.round(fs * .84)}px">
+        <span class="nm" style="opacity:.35">—</span></div>`;
+    return `<div class="side wait" style="font-size:${Math.round(fs * .84)}px">
+      <span class="nm">${esc(sl.waitOn || "TBD")}</span></div>`;
+  }
+  /* dropped in from the winners bracket, rather than won through here */
+  const drop = P.screen === "L" && sl.kind === "loser" && !e.mark ? " drop" : "";
+  /* .52 of the name, which is what gamenight's 16px captain is to its
+     31px team name — the seed sits where the captain sits there */
+  return `<div class="side ${e.mark}${drop}" style="font-size:${fs}px">`
+    + (sl.seed ? `<span class="sd" style="font-size:${Math.round(fs * .52)}px">${sl.seed}</span>` : "")
+    + `<span class="nm">${esc(sl.team)}</span></div>`;
+}
+
+function cardHTML(m, p, P, champ) {
+  const w = P.cardW, h = P.cardH;
+  const courtName = m.court || m.playedOn || "";
+  const n = courtName ? courtNo(courtName) : 0;
+  const c = COURT[n];
+  const state = m.status === "on_court" ? "live" : m.status === "complete" ? "done"
+              : m.status === "eligible" ? "ready" : "";
+  /* the slab is a fixed 96px as on the game-night board, until the card
+     gets narrow enough that a fixed slab would eat the name */
+  const slabW = Math.min(SLAB_PX, Math.round(w * 0.22));
+  const fs = P.V.nameCap;
+  const es = orderedSlots(m);
+  const isChamp = champ && m.side === "F" && m.status === "complete";
+  const dest = P.dest[m.id];      // where this match's loser goes
+  const slot = P.names[m.id];     // this match's own slot name, losers side
+  const small = Math.max(11, Math.round(fs * .52));
+  return `<div class="mcard ${m.side} ${state} ${isChamp ? "champ" : ""} ${c ? (c.faint ? "faint" : "") : "nocourt"}"
+      style="left:${p.x}px;top:${p.y}px;width:${w}px;height:${h}px;
+             padding:${PAD_T}px ${PAD_X}px ${PAD_B}px ${slabW + PAD_X}px${
+               c ? `;--ct:${c.hex};--ct-ink:${c.ink}` : ""}">
+    <div class="slab" style="width:${slabW}px">
+      <span class="cnum" style="font-size:${c ? Math.round(CNUM * slabW / SLAB_PX)
+        : Math.round(CNUM * .30)}px">${c ? n : "TBD"}</span>
+    </div>
+    ${slot ? `<div class="tophat">
+      <span class="slot" style="font-size:${small + 2}px">${slot}</span>
+    </div>` : ""}
+    ${slotHTML(es[0], fs, P)}
+    <div class="rule"></div>
+    ${slotHTML(es[1], fs, P)}
+    ${dest ? `<span class="dest" style="font-size:${Math.round(fs * .68)}px">${dest}</span>` : ""}
+    ${state ? `<span class="statetag">${
+      state === "live" ? "Live" : state === "done" ? "Final" : "Next"}</span>` : ""}
+  </div>`;
+}
+
+/* ── one bracket's own window ───────────────────────────────────────
+   A side shows all of its rounds when they fit in the variant's column
+   count, and otherwise a window of that many, sitting on the round in
+   play when that round belongs to this side. */
+function windowOf(levels, cur, n) {
+  if (levels.length <= n) return levels;
+  let i = levels.indexOf(cur);
+  if (i < 0) {                       // the other bracket is playing
+    i = levels.filter(l => l <= cur).length - 1;
+    if (i < 0) i = 0;
+  }
+  let a = Math.max(0, Math.min(i - Math.floor((n - 1) / 2), levels.length - n));
+  return levels.slice(a, a + n);
+}
+
+function plan(snap, V, box, screen) {
+  const all = snap.bracket.matches;
+  /* side F — the grand final — is on neither bracket's screen */
+  const mine = all.filter(m => screen === "L" ? m.side === "L" : m.side === "W");
+  const levels = [...new Set(mine.map(m => m.level))].sort((a, b) => a - b);
+  const win = windowOf(levels, snap.level, V.cols);
+  const drawn = mine.filter(m => win.includes(m.level));
+  const cols = win.map(l => ({level: l, ms: drawn.filter(m => m.level === l)}));
+  const peak = Math.max(1, ...cols.map(c => c.ms.length));
+  const cardH = Math.min(MAX_H, Math.floor((box.h - TAG - GAPV * (peak - 1)) / peak));
+  const usable = box.w - STUB;
+  const cardW = Math.floor((usable - V.gutter * (win.length - 1)) / win.length);
+  const step = win.length > 1 ? cardW + V.gutter : 0;
+
+  /* the cross-reference: which losers slot each winners match feeds */
+  const names = slotNames(all);
+  const dest = {};
+  if (screen !== "L")
+    for (const m of mine) {
+      const t = all.find(x => x.slots.some(sl => sl.from === m.id && sl.kind === "loser"));
+      if (t && names[t.id]) dest[m.id] = names[t.id];
+    }
+  return {drawn, levels, win, cols, peak, cardH, cardW, step, box, V, screen,
+          names: screen === "L" ? names : {}, dest, all, mine,
+          shownIds: new Set(drawn.map(m => m.id))};
+}
+
+function targetOf(m, all) {
+  const t = all.find(x => x.slots.some(sl => sl.from === m.id && sl.kind === "winner"));
+  return t ? t.id : "end:" + m.id;
+}
+
+/* the standard bracket rhythm, now with a whole column to work in */
+function place(ms, pos, x, cardH, top, height, shown, all) {
+  const ent = ms.map(m => ({
+    m,
+    ys: m.slots
+      .filter(s => s.from && s.kind === "winner" && shown.has(s.from) && pos[s.from])
+      .map(s => pos[s.from].y + cardH / 2),
+  }));
+  const conv = ent.filter(e => e.ys.length >= 2);
+  const rest = ent.filter(e => e.ys.length < 2);
+  if (rest.length) {
+    const runs = [];
+    for (const e of rest) {
+      const t = targetOf(e.m, all);
+      const last = runs[runs.length - 1];
+      if (last && last.t === t) last.es.push(e); else runs.push({t, es: [e]});
+    }
+    if (runs.some(r => r.es.length >= 2)) {
+      const n = rest.length;
+      const within = (n - runs.length) * GAPV;
+      const air = Math.max(0, height - n * cardH - within) / runs.length;
+      let y = top + air / 2;
+      for (const r of runs) {
+        for (const e of r.es) { pos[e.m.id] = {x, y}; y += cardH + GAPV; }
+        y += air - GAPV;
+      }
+    } else {
+      const packed = [];
+      for (const e of rest) {
+        if (e.ys.length === 1) pos[e.m.id] = {x, y: e.ys[0] - cardH / 2};
+        else packed.push(e);
+      }
+      /* a column with nothing to line up against sits in the middle of
+         what is left, rather than hanging off the top */
+      const span = packed.length * cardH + (packed.length - 1) * GAPV;
+      let y = top + (height - span) / 2;
+      for (const e of packed) { pos[e.m.id] = {x, y}; y += cardH + GAPV; }
+    }
+  }
+  conv.forEach(e => pos[e.m.id] =
+    {x, y: e.ys.reduce((a, b) => a + b, 0) / e.ys.length - cardH / 2});
+
+  const col = ms.map(m => ({id: m.id, y: pos[m.id].y})).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < col.length; i++) {
+    const min = col[i - 1].y + cardH + GAPV;
+    if (col[i].y < min) col[i].y = min;
+  }
+  const over = col.length ? (col[col.length - 1].y + cardH) - (top + height) : 0;
+  if (over > 0) col.forEach(e => e.y -= over);
+  col.forEach(e => pos[e.id].y = Math.max(top, e.y));
+}
+
+function layout(P) {
+  const pos = {};
+  P.cols.forEach((c, ci) => {
+    if (!c.ms.length) return;
+    place(c.ms, pos, ci * P.step, P.cardH, TAG, P.box.h - TAG, P.shownIds, P.all);
+  });
+  return pos;
+}
+
+/* ── how a connector gets from one card to the next ─────────────────
+   "side" is the classic bracket elbow: out of the card's right edge,
+   turn in the gutter, in to the next card's left edge. It spends the
+   gutter TWICE — two horizontal runs with a turn between — so the
+   gutter has to be wide enough for each run to read as a run. That is
+   what 110px was buying.
+
+   "edge" keeps the horizontal but moves the vertical onto the far card:
+   out of the RIGHT SIDE, along at the level halfway between the two
+   cards' top edges, then one 90° turn DOWN into the top edge of the card
+   it feeds. A card that is higher than its target is entered from above;
+   one that is lower is entered from below, on the same rule mirrored.
+
+   One horizontal instead of two, and the turn lands on the target rather
+   than in the gutter — so the gutter only has to hold a single run and
+   can be a third of the width. The first attempt at this had it
+   backwards, leaving the card's bottom edge partway along its width,
+   which read as a line notching out through the card. */
+/* Where along the target's top or bottom edge the line comes in. A
+   quarter of the way from its left lands just past the court slab, so
+   the turn sits where the card's content starts; at the halfway point
+   the elbow reached out into the middle of the card and read as a
+   flowchart rather than a bracket. */
+const EDGE_TURN = 0.25;
+
+function edges(P, pos) {
+  const byId = new Map(P.drawn.map(m => [m.id, m]));
+  const out = [];
+  for (const m of P.drawn) {
+    if (!pos[m.id]) continue;
+    m.slots.forEach((sl, i) => {
+      /* only the winner-advances line is drawn: a loser leaving this
+         bracket is a TAG on the card, not a wire across the board */
+      if (!sl.from || sl.kind !== "winner" || !pos[sl.from]) return;
+      const a = pos[sl.from], b = pos[m.id];
+      const f = byId.get(sl.from);
+      const lit = f && f.status === "on_court";
+      const x2 = b.x, y2 = b.y + P.cardH * (i ? 0.7 : 0.3);
+      const mid = a.y + P.cardH / 2;
+      let d;
+      if (P.V.elbow === "edge") {
+        const x1 = a.x + P.cardW;                    // always leaves the side
+        const turn = b.x + P.cardW * EDGE_TURN;
+        /* An offset smaller than this is not worth an elbow — it draws a
+           10px jog that reads as a kink rather than a turn. Straight
+           across, entering the side slightly off centre, as a paper
+           bracket does. */
+        const FLAT = 24;
+        if (b.y > a.y + FLAT) {                      // target sits lower
+          d = `M${x1} ${(a.y + b.y) / 2} H${turn} V${b.y}`;
+        } else if (b.y < a.y - FLAT) {               // target sits higher
+          const ab = a.y + P.cardH, bb = b.y + P.cardH;
+          d = `M${x1} ${(ab + bb) / 2} H${turn} V${bb}`;
+        } else {
+          d = `M${x1} ${mid} H${x2}`;                // in line: straight across
+        }
+      } else {
+        const x1 = a.x + P.cardW;
+        d = `M${x1} ${mid} H${x1 + (x2 - x1) / 2} V${y2} H${x2}`;
+      }
+      out.push(`<path d="${d}" fill="none"
+        stroke="${lit ? "var(--ink)" : "var(--wire)"}" stroke-width="${lit ? 4 : 2.5}"/>`);
+    });
+  }
+  return out.join("");
+}
+
+/* ── the road off the screen ────────────────────────────────────────
+   A match whose winner goes somewhere not on this screen gets an arrow
+   to the right edge, labelled with where. On both brackets that is the
+   grand final, which is why the screen can hold one format for every
+   round and hand over to a championship screen only at the end. */
+function offRamp(P, pos) {
+  const out = [];
+  for (const m of P.drawn) {
+    if (!pos[m.id]) continue;
+    const t = P.all.find(x =>
+      x.slots.some(sl => sl.from === m.id && sl.kind === "winner"));
+    if (!t || P.shownIds.has(t.id)) continue;
+    const p = pos[m.id];
+    const y = p.y + P.cardH / 2;
+    const x1 = p.x + P.cardW + 10, x2 = P.box.w - 16;
+    /* "to final" for anything that IS a final — the grand final, and the
+       losers final when a window stops one round short of it. Naming it
+       "to Losers Final" on the losers screen said the word twice and
+       broke step with the other screen's arrow. */
+    const label = t.side === "F" || /final/i.test(t.label) ? "to final" : "to " + t.label;
+    out.push(`<path d="M${x1} ${y} H${x2 - 12}" fill="none"
+      stroke="var(--wire)" stroke-width="2.5"/>`);
+    out.push(`<path d="M${x2 - 13} ${y - 7} L${x2} ${y} L${x2 - 13} ${y + 7} Z"
+      fill="var(--wire)"/>`);
+    out.push(`<text x="${x2}" y="${y - 14}" text-anchor="end" fill="var(--dim)"
+      font-family="Barlow Condensed" font-size="17" font-weight="600"
+      letter-spacing="2" style="text-transform:uppercase">${esc(label)}</text>`);
+  }
+  return out.join("");
+}
+
+function shellHTML(p, snap, P, champDone) {
+  const live = P.drawn.filter(m => m.status === "on_court").length;
+  /* a single-elim league has no losers side, so "winners bracket" would
+     be a distinction without a difference */
+  const title = P.screen === "L" ? "Losers bracket"
+    : p.format === "single" ? "Bracket" : "Winners bracket";
+  const rounds = P.win.length === P.levels.length
+    ? "all " + P.levels.length + " rounds"
+    : "rounds " + P.win.map(l => "R" + l).join("–");
+  return `<div class="stage">
+    <div class="deco"><div class="slash"></div>
+      <svg class="grove" fill="currentColor" viewBox="0 0 1920 420">${GROVE}</svg></div>
+    <div class="safe">
+      <div class="bar">
+        <div><div class="venue">Third <em>Coast</em></div>
+          <div class="sub">${esc(p.league)} &nbsp;·&nbsp; ${
+            p.format === "single" ? "single" : "double"} elimination &nbsp;·&nbsp; ${p.teams} teams</div></div>
+        <div class="rt"><div class="clock" data-clock>${clockText()}</div><div class="datel" data-today>${todayLabel()}</div></div>
+      </div>
+      <div class="phead"><span class="ptitle ${P.screen === "L" ? "L" : ""}">${title}</span>
+        ${champDone ? `<span class="pill lime">champion · ${esc(p.champion)}</span>`
+          : live ? `<span class="pill">${live} on court</span>`
+          : `<span class="pill quiet">next up after this round</span>`}
+        <span class="pnote">${esc(rounds)}</span></div>
+      <div class="tree"></div>
+    </div>
+  </div>`;
+}
+
+function treeHTML(P, pos, snap, champDone) {
+  return `
+    <svg class="edges">${edges(P, pos)}${offRamp(P, pos)}</svg>
+    ${P.drawn.map(m => pos[m.id] ? cardHTML(m, pos[m.id], P, champDone) : "").join("")}`;
+}
+
+/* Which names the card was too narrow to hold, and by how much, measured
+   off the rendered elements. Clipping is a choice now rather than a
+   fault — the alternative was shrinking every name in the league to fit
+   its longest — so the page reports WHICH names pay for it. */
+function clippedNames(el) {
+  const hit = [];
+  el.querySelectorAll(".side:not(.wait) .nm").forEach(nm => {
+    const over = nm.scrollWidth - nm.clientWidth;
+    if (over > 1) hit.push({name: nm.textContent.trim(), over});
+  });
+  return hit;
+}
+
+function mount(frameEl, p, snap, V, screen) {
+  /* p.champion is the guard: a mid-night league has a settled phase and
+     only one level, which otherwise reads as "the tournament is over" */
+  const champDone = !!p.champion && snap.phase === "settled"
+    && snap.level === Math.max(...p.snapshots.map(s => s.level));
+  /* the shell needs the plan for its header, and the plan needs the box
+     the shell measures, so the box is taken from a first pass */
+  frameEl.innerHTML = shellHTML(p, snap,
+    {screen, drawn: [], win: [], levels: []}, false);
+  const tree0 = frameEl.querySelector(".tree");
+  const box = {w: Math.round(tree0.clientWidth), h: Math.floor(tree0.clientHeight / 8) * 8};
+  const P = plan(snap, V, box, screen);
+  frameEl.innerHTML = shellHTML(p, snap, P, champDone);
+  const pos = layout(P);
+  frameEl.querySelector(".tree").innerHTML = treeHTML(P, pos, snap, champDone);
+  return {P, pos, box, clipped: clippedNames(frameEl)};
+}
+
+const q = new URLSearchParams(location.search);
+
+/* ── the other fixture ──────────────────────────────────────────────
+   playoff-progress.json is one league across sixteen moments, which is
+   what the variants were chosen against. playoff-2026-09-15.json is one
+   moment of a three-league night — the shape a real rotation has to
+   render, including a single-elimination league. The match shape is the
+   same, so a league of it can be dressed as a one-moment progression.
+     ?src=night&league=Coed%204s%20A */
+function fromNight(night, name) {
+  const lg = night.leagues.find(l => l.name === name) || night.leagues[0];
+  const lvl = lg.currentLevel;
+  const round = (lg.rounds || []).find(r => r.level === lvl);
+  return {
+    league: lg.name,
+    teams: Array.isArray(lg.teams) ? lg.teams.length : lg.teams,
+    format: lg.format,
+    champion: "",                       // nobody has won yet on this night
+    snapshots: [{
+      level: lvl,
+      label: round ? round.label : "Round " + lvl,
+      phase: lg.matches.some(m => m.status === "on_court") ? "playing" : "settled",
+      bracket: {matches: lg.matches},
+    }],
+  };
+}
+
+/* ?src=night is the real-data path (as opposed to the curated round-by-
+   round progress fixture below it): tries the live server first, falls
+   back to the captured fixture when nothing answers — same three-source
+   idea board-data.js already uses. Only this path polls; the progress
+   fixture is a fixed design review of the round transition, not a live
+   read. */
+async function fetchNight() {
+  try {
+    const r = await fetch("/api/brackets", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.json();
+  } catch {
+    const r = await fetch("data/playoff-2026-09-15.json", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+}
+
+(q.get("src") === "night" ? fetchNight() : fetch("data/playoff-progress.json", {cache:"no-store"})
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }))
+  /* Nothing is measured until the fonts are in. Barlow Condensed is a
+     narrow face and the fallback is not, so measuring first reported
+     names as clipped that render whole — the earlier sweep called 28px
+     "clipping" on a card that holds 31px. */
+  .then(p => document.fonts.ready.then(() => p))
+  .then(p => q.get("src") === "night" ? fromNight(p, q.get("league")) : p)
+  .then(p => {
+    if (q.get("shot")) {
+      document.body.className = "shot";
+      document.getElementById("nav").remove();
+      const V = VARIANTS.find(v => v.key === q.get("shot")) || VARIANTS[0];
+      const wrap = document.querySelector(".wrap");
+      wrap.className = "";
+      wrap.innerHTML = `<div class="frame"></div>`;
+      /* clamped: the night source is a single moment, so the default of
+         3 — a useful mid-tournament board in the progression — is off
+         the end of it */
+      const at = Math.min(Number(q.get("snap") || 3), p.snapshots.length - 1);
+      const frameEl = wrap.querySelector(".frame");
+      /* mount() draws the board at its native 1920x1080; .stage still
+         needs scaling down to whatever size .frame actually rendered
+         at, same as the review sheet below does for every one of its
+         frames -- easy to miss here because this branch always used to
+         return before reaching that shared fit(), and it went unnoticed
+         only because .frame was ALSO always fixed at exactly 1920x1080,
+         so no scaling was ever needed. Now that .frame fits the real
+         viewport (see body.shot .frame above), it is. */
+      const fit = () => { const st = frameEl.querySelector(".stage");
+        if (st) st.style.transform = `scale(${frameEl.clientWidth / 1920})`; };
+      mount(frameEl, p, p.snapshots[at], V, q.get("side") || "W");
+      fit();
+      addEventListener("resize", fit);
+      if (q.get("src") === "night") {
+        setInterval(async () => {
+          let fresh;
+          try { fresh = fromNight(await fetchNight(), q.get("league")); } catch { return; }
+          mount(frameEl, fresh, fresh.snapshots[0], V, q.get("side") || "W");
+          fit();
+        }, 5000);
+      }
+      return;
+    }
+
+    if (q.get("sweep")) {           /* what name size each width can hold */
+      const out = ["cols gutter cap  cardW  clipped/32 boards"];
+      const host = document.createElement("div");
+      host.style.cssText = "position:absolute;left:-99999px;top:0";
+      host.innerHTML = `<div class="frame" style="width:1920px;height:1080px;aspect-ratio:auto"></div>`;
+      document.body.appendChild(host);
+      const fr = host.querySelector(".frame");
+      for (const cols of [3, 4, 5])
+        for (const gutter of [60, 80, 110])
+          for (const nameCap of [16, 18, 20, 22, 24, 26, 28, 29, 30, 31]) {
+            const V = {cols, gutter, nameCap};
+            let total = 0, cw = 0;
+            for (const snap of p.snapshots) for (const screen of ["W", "L"]) {
+              const r = mount(fr, p, snap, V, screen);
+              total += r.clipped.length; cw = r.P.cardW;
+            }
+            out.push(`${String(cols).padStart(4)} ${String(gutter).padStart(6)} ${
+              String(nameCap).padStart(3)} ${String(cw).padStart(6)} ${String(total).padStart(11)}`);
+          }
+      host.remove();
+      document.querySelector(".wrap").innerHTML = `<pre id="out">${esc(out.join("\n"))}</pre>`;
+      return;
+    }
+
+    document.getElementById("sheet").innerHTML = SHOTS.map(si => {
+      const snap = p.snapshots[si];
+      return `<div class="snaphead" id="s${si}">
+          <h2>Round ${snap.level} — ${esc(snap.phase)}</h2>
+          <div class="meta">snapshot ${si} · ${esc(snap.label)}</div></div>`
+        + VARIANTS.map(V => `<section class="vari" id="s${si}-${V.key}">
+            <div class="cap">
+              <div>
+                <h3><b>${V.key}</b>${esc(V.name)}</h3>
+                <div class="num" data-num="${si}-${V.key}">—</div>
+              </div>
+              <div class="blurb">${esc(V.blurb)}</div>
+            </div>
+            <div class="frame" data-snap="${si}" data-v="${V.key}" data-side="W"></div>
+            <div class="frame" data-snap="${si}" data-v="${V.key}" data-side="L"></div>
+          </section>`).join("");
+    }).join("");
+
+    const stats = {};
+    document.querySelectorAll(".frame").forEach(fr => {
+      const snap = p.snapshots[Number(fr.dataset.snap)];
+      const V = VARIANTS.find(v => v.key === fr.dataset.v);
+      const {P, clipped} = mount(fr, p, snap, V, fr.dataset.side);
+      const k = fr.dataset.snap + "-" + V.key;
+      const fs = Math.max(15, Math.min(V.nameCap, Math.round(P.cardH * 0.24)));
+      const worst = clipped.slice().sort((a, b) => b.over - a.over)[0];
+      (stats[k] = stats[k] || []).push(
+        `${fr.dataset.side === "L" ? "losers" : "winners"} ${P.win.length}/${P.levels.length} rounds`
+        + (worst ? `, ${clipped.length} name${clipped.length > 1 ? "s" : ""} cut (worst: ${
+            worst.name.slice(0, 22)}, ${worst.over}px)` : ""));
+      if (stats[k].length === 2)
+        document.querySelector(`[data-num="${k}"]`).textContent =
+          `card ${P.cardW}×${P.cardH} · name ${fs}px · ${stats[k].join(" · ")}`;
+    });
+
+    document.getElementById("nav").insertAdjacentHTML("beforeend",
+      SHOTS.map(si => `<a href="#s${si}">R${p.snapshots[si].level}</a>`).join("")
+      + `<span class="sep"></span>`
+      + VARIANTS.map(V => `<a href="#s${SHOTS[0]}-${V.key}">${V.key}</a>`).join(""));
+
+    const fit = () => document.querySelectorAll(".frame .stage").forEach(st =>
+      st.style.transform = `scale(${st.parentElement.clientWidth / 1920})`);
+    addEventListener("resize", fit); fit();
+  })
+  .catch(e => {
+    const el = document.getElementById("err");
+    el.style.display = "block";
+    el.innerHTML = q.get("src") === "night"
+      ? `<b>Could not load the night</b> (${esc(e.message)}).<br>
+         Neither the live server's <code>/api/brackets</code> nor the captured fixture
+         answered — serve one of them over HTTP.`
+      : `<b>Could not load data/playoff-progress.json</b> (${esc(e.message)}).<br>
+      Generate it with
+      <code>go run ./prototype/tools/playofffixture -progress "Coed 4s Upper Rec"</code>
+      and serve over HTTP.`;
+  });
+
+/* keep the clock in the header honest -- see startClock in board-data.js */
+startClock();
+</script>
+</body>
+</html>

@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tonight, on a tournament night</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  The Tonight pane for a PLAYOFF night.
+
+  Earlier I called this grid "meaningless" on a tournament night because a
+  team's future opponent is unknown. That was wrong, and the client put it
+  better: the unknown IS the information. A team that just lost game one
+  wants to see that it is in the losers bracket, waiting on a specific
+  game. The axis was wrong, not the grid — slots become BRACKET ROUNDS.
+
+  Data is real: teams from the captured golden night, bracket from
+  domain.Generate, state from domain.Replay over an event sequence.
+  Regenerate with `go run ./prototype/tools/playofffixture`. The TBDs
+  below are genuine unresolved slots, and "Winner on Court 3" is derived
+  from the feeding match's live court, not typed.
+
+  SERVE over HTTP:  cd prototype && python -m http.server 8099
+-->
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* ═══ page chrome ═════════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0c;color:#e8e6ef;font-family:"Barlow Condensed",sans-serif;padding-bottom:110px}
+#nav{position:sticky;top:0;z-index:100;background:rgba(10,10,12,.93);backdrop-filter:blur(14px);
+  border-bottom:1px solid #23232b;padding:11px 20px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+#nav .brand{font-weight:700;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:#7a7690;margin-right:10px}
+#nav a{color:#c9c5d8;text-decoration:none;font-size:14px;font-weight:600;padding:6px 11px;letter-spacing:.06em;
+  border:1px solid #2c2c36;border-radius:999px;white-space:nowrap;text-transform:uppercase}
+#nav a:hover{background:#1b1b22;border-color:#4a4a58;color:#fff}
+#nav a b{color:#6e6a82;margin-right:5px}
+.wrap{max-width:1680px;margin:0 auto;padding:0 20px}
+.intro{padding:34px 0 4px;max-width:920px}
+.intro h1{font-family:"Archivo Black",sans-serif;font-size:26px;line-height:1.2;text-transform:uppercase}
+.intro p{margin-top:12px;color:#9d99b0;font-size:16px;line-height:1.6}
+.intro em{color:#e8e6ef;font-style:normal}
+.intro code{background:#1b1b22;padding:2px 6px;border-radius:4px;font-size:14px}
+.facts{margin:18px 0 6px;border:1px solid #2c2c36;border-radius:10px;overflow:hidden;font-size:15px}
+.facts div{display:grid;grid-template-columns:1fr 90px 110px 1fr;gap:12px;padding:9px 14px;align-items:center}
+.facts div+div{border-top:1px solid #23232b}
+.facts .h{background:#15151b;color:#7a7690;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+.facts .warn{color:#e0c05a}
+.vari{padding-top:44px;scroll-margin-top:64px}
+.cap{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap;margin-bottom:13px}
+.cap .no{font-family:"Archivo Black",sans-serif;font-size:26px;color:#3c3a49;min-width:34px}
+.cap h2{font-size:23px;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+.cap .pages{font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:#ffc400;margin-top:5px}
+.cap .blurb{color:#9d99b0;font-size:16px;line-height:1.55;flex:1 1 420px;min-width:280px}
+.cap .verdict{flex-basis:100%;font-size:15px;line-height:1.5;color:#9ad06a;border-left:2px solid #2f4a1c;padding-left:11px;margin-top:8px}
+.cap .verdict.cost{color:#c9a227;border-left-color:#4a3d12}
+/* One frame, for embedding in the rotation sheet (?shot=<id>) at a fixed
+   1920x1080 an outer iframe scales -- OR, opened directly (a kiosk
+   browser, or a laptop screen with no iframe wrapping it), the largest
+   16:9 box that fits the viewport, letterboxed. min() does the fit:
+   whichever of "100vw wide" or "100vh tall" is the tighter constraint
+   wins, and the other dimension follows the 16:9 ratio from it. */
+body.shot{padding:0;background:#000;overflow:hidden;height:100vh;display:flex;align-items:center;justify-content:center}
+body.shot .wrap{max-width:none;padding:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+body.shot .vari{padding:0}
+body.shot .frame{width:min(100vw,177.7778vh);height:min(100vh,56.25vw);border:0;border-radius:0;margin:0}
+.frame{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:12px;border:1px solid #24242c;background:#000;margin-bottom:10px}
+#err{margin:30px 0;padding:16px;border:1px solid #4a3d12;background:#1a1607;border-radius:10px;color:#e0c05a;font-size:16px;display:none}
+</style>
+
+<style>
+/* ═══ the board ═══════════════════════════════════════════════ */
+.stage{
+  --ground:#101A2C; --surface:#1A263C; --raised:#24334E; --line:#2B3A54;
+  --ink:#FFFFFF; --dim:#8E99AB;
+  --live:#FF00A0; --won:#8CC63F; --pend:#2E9BFF; --time:#FFC400; --mark:#8CC63F;
+  --on-fill:#06070A; --frond:#5FB0FF; --out:#55617A;
+  /* #FF00A0 is 4.15:1 as TEXT on the card surface and worse on a washed
+     lane — fine as a fill with dark text on it (5.52:1), which is how the
+     game-night board uses it. Text needs the lifted variant, same split
+     palettes.md already makes for lime. */
+  --live-txt:#FF6EC7;
+  position:absolute;top:0;left:0;width:1920px;height:1080px;transform-origin:top left;
+  overflow:hidden;background:var(--ground);color:var(--ink);
+  font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums;
+}
+.deco{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.slash{position:absolute;inset:0;background:linear-gradient(115deg,transparent 60%,
+  rgba(255,0,160,.05) 60%,rgba(255,0,160,.05) 74%,transparent 74%)}
+.grove{position:absolute;left:0;bottom:0;width:1920px;height:420px;color:var(--frond);opacity:.10}
+.safe{position:absolute;inset:3.4% 3%;display:flex;flex-direction:column;z-index:2}
+
+.bar{display:flex;align-items:flex-end;justify-content:space-between;gap:30px}
+.venue{font-family:"Archivo Black",sans-serif;font-size:48px;line-height:1;text-transform:uppercase}
+.venue em{font-style:normal;color:var(--mark)}
+.sub,.datel,.pnote{text-transform:uppercase;letter-spacing:.13em;font-weight:600;font-size:19px;color:var(--dim)}
+.sub{margin-top:11px}
+.rt{text-align:right}
+.clock{font-family:"Archivo Black",sans-serif;font-size:42px;line-height:1;color:var(--time)}
+.datel{margin-top:9px}
+.phead{display:flex;align-items:baseline;gap:16px;margin:22px 0 14px}
+.ptitle{font-family:"Archivo Black",sans-serif;font-size:32px;line-height:1;text-transform:uppercase}
+.pill{display:inline-block;background:var(--time);color:var(--on-fill);font-weight:700;font-size:19px;
+  padding:5px 15px 6px;line-height:1;clip-path:polygon(8px 0,100% 0,100% 100%,0 100%,0 8px)}
+.pill.blue{background:var(--pend)}
+.pill.pink{background:var(--live)}
+
+/* ── the league card ─────────────────────────────────────────── */
+.cards{flex:1;min-height:0;display:grid;gap:26px;align-content:start}
+.cards.one{grid-template-columns:1fr}
+.cards.two{grid-template-columns:1fr 1fr}
+.lgcard{
+  background:var(--surface);padding:13px 22px 15px;
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));
+}
+.lgcap{
+  font-family:"Archivo Black",sans-serif;font-size:25px;text-transform:uppercase;color:var(--pend);
+  display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--line);padding-bottom:7px;
+}
+.lgcap .fmt{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:16px;
+  color:var(--dim);letter-spacing:.12em;margin-left:auto}
+
+/* team label, shared */
+.tm{min-width:0;display:flex;align-items:baseline;gap:9px;padding-right:14px}
+.tm .sd{color:var(--dim);flex:none;font-weight:600}
+.tm .nm{font-weight:700;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm .cp{color:var(--dim);flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow{display:grid;align-items:center;border-bottom:1px solid rgba(43,58,84,.5)}
+.trow:last-child{border-bottom:none}
+/* an eliminated team stays on the board — knowing you are out is an
+   answer too — but drains so the live rows carry the eye */
+.trow.out .tm .nm{color:var(--out)}
+.trow.out .tm .sd,.trow.out .tm .cp{color:var(--out)}
+.outtag{flex:none;font-size:15px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--out)}
+
+/* court chip */
+.cc{display:inline-grid;place-items:center;background:var(--cc);color:var(--cci);
+  font-weight:700;line-height:1;flex:none}
+.cc.faint{box-shadow:inset 0 0 0 2px rgba(217,201,163,.45)}
+.cc.tbd{background:transparent;color:var(--pend);box-shadow:inset 0 0 0 2px var(--pend);font-size:.62em}
+
+/* ── a cell, in each of the five states it can be in ─────────── */
+.cel{display:flex;align-items:center;gap:9px;min-width:0}
+.cel .op{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cel.empty{color:#33405C}
+/* BEAT and LOST are a matched pair, not a matched colour — which one it
+   was is the thing worth seeing at a glance, so a win stays lime and a
+   loss fades to slate. LIVE and NEXT carry no colour of their own here
+   any more: which column is which is said once, on the column's own
+   header (see .axis .verb below), not on every cell in it. */
+.cel.won .op{color:var(--won);font-weight:700}
+.cel.lost .op{color:var(--out)}
+.cel.live .op{color:var(--ink);font-weight:700}
+/* the state that matters most: next up, opponent not decided yet */
+.cel.wait .op{color:var(--pend);font-style:normal}
+.cel.next .op{color:var(--ink)}
+.verb{
+  flex:none;font-size:.6em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  padding:2px 7px 3px;color:var(--on-fill);background:var(--dim);
+}
+.cel.won .verb{background:var(--won)}
+.cel.lost .verb{background:#8494B0}
+.cel.wait .verb{background:var(--pend)}
+
+/* ── P1: a column per bracket round ──────────────────────────── */
+[data-l="P1"] .colhead,[data-l="P1"] .trow{grid-template-columns:var(--namew) repeat(var(--n),1fr)}
+[data-l="P1"] .colhead{display:grid;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;
+  font-weight:600;font-size:15px;padding:7px 0 6px;border-bottom:1px solid var(--line)}
+[data-l="P1"] .trow{height:52px}
+[data-l="P1"] .tm{font-size:29px}
+[data-l="P1"] .tm .sd{font-size:20px}
+[data-l="P1"] .tm .cp{font-size:17px;max-width:120px}
+[data-l="P1"] .cel{font-size:19px}
+[data-l="P1"] .cc{width:34px;height:34px;font-size:19px}
+
+/* ── P2: the team's own path, round label inside the cell ────── */
+[data-l="P2"] .trow{grid-template-columns:var(--namew) 1fr;height:60px}
+[data-l="P2"] .tm{font-size:34px}
+[data-l="P2"] .tm .sd{font-size:22px}
+[data-l="P2"] .tm .cp{font-size:19px;max-width:140px}
+[data-l="P2"] .path{display:flex;align-items:center;gap:26px;min-width:0}
+[data-l="P2"] .step{display:flex;flex-direction:column;gap:1px;min-width:0}
+[data-l="P2"] .step .rd{font-size:14px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+[data-l="P2"] .cel{font-size:22px}
+[data-l="P2"] .cc{width:36px;height:36px;font-size:20px}
+[data-l="P2"] .step.done{opacity:.55}
+[data-l="P2"] .step.focus .rd{color:var(--pend)}
+
+/* ══ P4 / P5: swimlanes on ONE universal round axis ══════════════
+   P1 with the Winners/Losers label pivoted out of the column headers
+   and up onto a section header — and, crucially, with a single R1..RN
+   axis shared by both lanes rather than each lane numbering its own
+   rounds. Winners Semi and Losers R1 are the same round of the night,
+   so they belong in the same column.
+
+   R1 has no losers cell because at R1 nobody has lost yet. That comes
+   out of the graph: Losers R1 is fed by losers of Winners R1, so its
+   depth cannot be less than 2.
+
+   A team sits in the lane of its most recent match — where it IS, which
+   is the question a player is asking. */
+.axis,.lane .trow{
+  grid-template-columns:var(--namew) repeat(var(--n),1fr);
+}
+/* labels centred over their own column. Only "Team" stays left. */
+.axis{text-align:center}
+.axis > :first-child{text-align:left}
+.lane .cel{justify-content:center;padding:0 9px;min-width:0}
+.axis > *,.lane .cel{overflow:hidden}
+.axis{
+  display:grid;color:var(--ink);font-family:"Archivo Black",sans-serif;
+  text-transform:uppercase;letter-spacing:.04em;
+  padding:11px 0 8px;border-bottom:2px solid var(--line);
+}
+.axis > :first-child{color:var(--dim);font-family:"Barlow Condensed",sans-serif;
+  font-weight:600;letter-spacing:.14em}
+/* No horizontal padding: the lane grid has to share the axis grid's
+   coordinate space, or the columns drift apart between the two. The wash
+   spanning the full content width is what "across the whole chunk"
+   means anyway. */
+.lane{margin-top:12px;padding:5px 0 10px;border-radius:12px;background:var(--lanebg,transparent)}
+.lane:first-of-type{margin-top:8px}
+.lanecap{
+  display:flex;align-items:baseline;gap:12px;padding:3px 0 4px 11px;
+  border-left:5px solid var(--lanec);
+  font-family:"Archivo Black",sans-serif;text-transform:uppercase;color:var(--lanec);
+}
+/* a column this lane does not reach — not a missing result, no dash */
+.cel.none{border:none}
+
+/* ── the round in play ─────────────────────────────────────────────
+   No frame, and no per-cell tag either: a whole column is live, or a
+   whole column is next, so LIVE/NEXT are said once on the column's own
+   header rather than repeated down every row of it. WAIT and the
+   decided states stay on the cell, because those can land in any
+   column regardless of which one the header is talking about. */
+.axis > div{white-space:nowrap}
+.axis .verb{margin-left:8px;vertical-align:2px}
+.verb.live{background:var(--live)}
+.verb.next{background:var(--pend)}
+
+/* P4: losers pink, winners blue — the flip you asked for. Pink is also
+   LIVE in the state system, so this is the pairing to judge for
+   interference; the pink "now" chips now sit in the losers lane. */
+[data-l="P4"] .lane.W{--lanec:#6FB6FF;--lanebg:rgba(46,155,255,.07)}
+[data-l="P4"] .lane.L{--lanec:var(--live-txt);--lanebg:rgba(255,0,160,.07)}
+[data-l="P4"] .lane.F{--lanec:var(--time);--lanebg:rgba(255,196,0,.07)}
+
+/* P5: the same wash in colours that carry no state meaning. */
+[data-l="P5"] .lane.W{--lanec:var(--won);--lanebg:rgba(140,198,63,.07)}
+[data-l="P5"] .lane.L{--lanec:#7C8AA8;--lanebg:rgba(124,138,168,.09)}
+[data-l="P5"] .lane.F{--lanec:var(--time);--lanebg:rgba(255,196,0,.07)}
+
+[data-l="P4"] .axis,[data-l="P5"] .axis{font-size:19px}
+[data-l="P4"] .lanecap,[data-l="P5"] .lanecap{font-size:21px}
+[data-l="P4"] .trow,[data-l="P5"] .trow{height:52px}
+[data-l="P4"] .tm,[data-l="P5"] .tm{font-size:31px}
+[data-l="P4"] .tm .sd,[data-l="P5"] .tm .sd{font-size:21px}
+[data-l="P4"] .tm .cp,[data-l="P5"] .tm .cp{font-size:18px;max-width:150px}
+[data-l="P4"] .cel,[data-l="P5"] .cel{font-size:21px}
+[data-l="P4"] .cc,[data-l="P5"] .cc{width:35px;height:35px;font-size:20px}
+
+</style>
+</head>
+<body>
+
+<nav id="nav"><span class="brand">Playoff Tonight</span></nav>
+<div class="wrap">
+  <div class="intro">
+    <h1>Tonight, on a tournament night</h1>
+    <p>
+      I had this wrong. I said the Tonight grid was meaningless on a playoff night because a
+      team's next opponent is unknown. <em>The unknown is the information</em> — a team that
+      just lost game one wants to see it is in the losers bracket, waiting on a specific game.
+      The axis was wrong, not the grid. Slots become <em>bracket rounds</em>.
+    </p>
+    <p>
+      None of this is mocked. Teams come from the captured night, the bracket from
+      <code>domain.Generate</code>, the state from <code>domain.Replay</code> over an event
+      sequence — the same three functions the server uses. Every TBD below is a genuinely
+      unresolved slot, and <em>"Winner on Court 3"</em> is read off the feeding match's live
+      court rather than typed.
+    </p>
+    <p>The exact case you described is in there — seed 5, Coed 4s A:</p>
+    <div class="facts">
+      <div class="h"><span>Toodles (seed 5)</span><span>result</span><span>court</span><span>opponent</span></div>
+      <div><span>Winners R1</span><span>won</span><span>—</span><span>Holy Blockamole Infinity</span></div>
+      <div><span>Winners Semi</span><span>lost</span><span>—</span><span>Carolina Beach Bumpers</span></div>
+      <div class="warn"><span>Losers R2</span><span>next</span><span>TBD</span><span>Winner of Losers R1</span></div>
+    </div>
+    <p>
+      One measurement shapes all of these: a double-elim bracket has <em>8 rounds but each team
+      plays only 2–3 of them</em>, so a single flat round grid (P1) is <em>28% dense</em> —
+      much emptier than the game-night grid at 50%.
+    </p>
+    <p>
+      <em>Pivoting the Winners/Losers label up onto a section header is what fixes that</em>,
+      and putting both lanes on <em>one universal axis</em> is what makes them readable together.
+      R1 to R6 is shared, so Winners Semi and Losers R1 sit in the same column — they are the
+      same round of the night. <em>R1 has no losers cell</em>, because at R1 nobody has lost yet.
+    </p>
+    <p>
+      That axis is not hand-assigned. It is each match's depth in the dependency graph, computed
+      in Go from <code>domain.Structure</code> — so "the losers bracket has no R1" falls out of
+      the maths rather than being asserted, and it stays correct for any bracket size or format.
+    </p>
+    <p>
+      A team sits in the lane of its <em>most recent</em> match — so a team that lost in winners
+      appears in the losers lane, which is where it actually is. An empty lane is dropped
+      entirely: nobody has reached the Grand Final yet, so that section does not render.
+    </p>
+  </div>
+  <div id="err"></div>
+  <div id="sheet"></div>
+</div>
+
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+  <g id="frondg"><path d="M99 196c-2-42 3-79 13-112 3-9 7-18 11-26-8 7-15 16-21 26-9 15-15 33-19 52-1-24 3-45 11-63 8-17 19-30 33-38-16 1-31 8-44 20C70 68 61 85 56 106c-6-19-6-37-1-53 5-17 15-31 29-41-17 3-31 12-42 26-11 15-17 33-18 54-9-16-13-32-11-47 2-16 9-30 21-40-17 5-30 16-38 32-8 15-11 34-8 55 3 21 12 41 26 60l-9 3c-1 0-2 1-2 3 0 1 1 2 3 2l14-2c11 14 24 26 39 38h40z"/></g>
+  <symbol id="palmtree" viewBox="0 0 240 280">
+    <path d="M120 280 C 116 226 110 172 102 124 L 122 118 C 128 170 134 226 142 280 Z"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-138) scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-94)  scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(-50)  scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(0)    scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(50)   scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(94)   scale(.62) translate(-99,-196)"/>
+    <use href="#frondg" transform="translate(112,120) rotate(138)  scale(.62) translate(-99,-196)"/>
+    <circle cx="108" cy="130" r="7"/><circle cx="123" cy="134" r="6"/><circle cx="97" cy="136" r="6"/>
+  </symbol>
+</svg>
+
+<!-- Routes /api/ to the in-browser server when (and only when) this page is
+     framed by demo.html. Completely inert on the real box. -->
+<script src="api-shim.js"></script>
+<script src="board-data.js"></script>
+<script>
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const GROVE = [[40,300],[300,220],[620,270],[980,200],[1240,320],[1600,250]]
+  .map(([x,w]) => { const h = Math.round(w*280/240);
+    return `<use href="#palmtree" x="${x}" y="${420-h}" width="${w}" height="${h}"/>`; }).join("");
+
+/* a court chip, or a dashed TBD box where a court is not assigned yet */
+function chip(court) {
+  if (!court) return `<span class="cc tbd">TBD</span>`;
+  const n = courtNo(court), c = COURT[n];
+  if (!c) return `<span class="cc tbd">${esc(court)}</span>`;
+  return `<span class="cc ${c.faint ? "faint" : ""}" style="--cc:${c.hex};--cci:${c.ink}">${n}</span>`;
+}
+
+/* One cell, in whichever of the five states it is in. LIVE and NEXT are
+   not tagged here any more — a whole column is live, or a whole column
+   is next, so that tag now sits once on the column's own header instead
+   of repeating down every row of it. WAIT and the decided states stay
+   per-cell: a blocked slot or a settled result can land in any column,
+   not just the one the header is talking about. */
+function cell(c) {
+  if (!c) return `<div class="cel empty">—</div>`;
+  if (c.won)  return `<div class="cel won"><span class="verb">beat</span><span class="op">${esc(c.opp)}</span></div>`;
+  if (c.lost) return `<div class="cel lost"><span class="verb">lost</span><span class="op">${esc(c.opp)}</span></div>`;
+  if (c.status === "on_court")
+    return `<div class="cel live">${chip(c.court)}<span class="op">${esc(c.opp || c.waitOn)}</span></div>`;
+  if (c.waitOn)
+    return `<div class="cel wait">${chip(c.court)}<span class="op">${esc(c.waitOn)}</span></div>`;
+  return `<div class="cel next">${chip(c.court)}<span class="op">${esc(c.opp)}</span></div>`;
+}
+
+function teamLabel(t) {
+  return `<div class="tm">`
+    + (t.seed ? `<span class="sd">${t.seed}</span>` : "")
+    + `<span class="nm">${esc(t.name)}</span>`
+    + (t.cap ? `<span class="cp">${esc(t.cap)}</span>` : "")
+    + (t.out ? `<span class="outtag">out</span>` : "")
+    + `</div>`;
+}
+
+/* ── P1 / the grid half of P3: a column per bracket round ─────── */
+function gridCard(lg, namew) {
+  const byRound = t => Object.fromEntries(t.cells.map(c => [c.round, c]));
+  return `<div class="lgcard" style="--n:${lg.rounds.length};--namew:${namew}">
+    <div class="lgcap">${esc(lg.name)}<span class="fmt">${esc(lg.format)} elim · ${lg.teams.length} teams</span></div>
+    <div class="colhead"><div>Team</div>${lg.rounds.map(r => `<div>${esc(r.label)}</div>`).join("")}</div>
+    ${lg.teams.map(t => { const m = byRound(t);
+      return `<div class="trow${t.out ? " out" : ""}">${teamLabel(t)}${
+        lg.rounds.map(r => cell(m[r.label])).join("")}</div>`; }).join("")}
+  </div>`;
+}
+
+/* ── P2 / the path half of P3: the team's own route, in order ─── */
+function pathCard(lg, namew) {
+  return `<div class="lgcard" style="--namew:${namew}">
+    <div class="lgcap">${esc(lg.name)}<span class="fmt">${esc(lg.format)} elim · ${lg.teams.length} teams</span></div>
+    ${lg.teams.map(t => `<div class="trow${t.out ? " out" : ""}">${teamLabel(t)}
+      <div class="pathwrap path">${t.cells.map(c => {
+        const settled = c.won || c.lost;
+        return `<div class="step ${settled ? "done" : "focus"}">
+          <span class="rd">${esc(c.round)}</span>${cell(c)}</div>`;
+      }).join("")}</div></div>`).join("")}
+  </div>`;
+}
+
+/* ── P4 / P5: one card per league, split into swimlanes ───────── */
+const LANE_NAME = {W:"Winners", L:"Losers", F:"Grand Final", "3P":"Third Place"};
+
+function swimCard(lg, namew) {
+  /* ONE universal axis for the whole card: R1..RN, where N is the depth of
+     the match graph. Both lanes align to it, so Winners Semi and Losers R1
+     sit in the same column because they are genuinely the same round of
+     the night. R1 has no losers column at all — everyone is still a
+     winner — which falls out of the levels rather than being asserted. */
+  const levels = [...new Set(lg.rounds.map(r => r.level))].sort((a, b) => a - b);
+  const levelOf = Object.fromEntries(lg.rounds.map(r => [r.label, r.level]));
+
+  /* a lane with nobody in it is dropped: an empty "Grand Final" section
+     is furniture, not information */
+  const sides = ["W", "L", "3P", "F"].filter(s =>
+    lg.rounds.some(r => r.side === s) && lg.teams.some(t => t.lane === s));
+
+  /* The round in play. Comes from the data — the shallowest level with an
+     unfinished match — so it advances on its own as results land. ?round=
+     stands in for the controller override until /control exists. */
+  const override = parseInt(new URLSearchParams(location.search).get("round"), 10);
+  const cur = Number.isInteger(override) ? override : lg.currentLevel;
+
+  /* Four rounds and a final, same depth bracket-split.html settled on —
+     a double-elim league's universal axis can run to 6 or 8 shared
+     levels, and nobody reading a team's whole night needs all of them
+     at once. Windowed on the round in play, same as bracket-split's
+     own windowOf. */
+  const disp = windowOf(levels, cur, 5);
+
+  return `<div class="lgcard" style="--namew:${namew};--n:${disp.length}">
+    <div class="lgcap">${esc(lg.name)}<span class="fmt">${esc(lg.format)} elim · ${lg.teams.length} teams</span></div>
+    <div class="cardbody">
+    <div class="axis"><div>Team</div>${
+      disp.map(l => `<div>R${l}${
+        l === cur ? `<span class="verb live">live</span>`
+        : l === cur + 1 ? `<span class="verb next">next</span>` : ""
+      }</div>`).join("")}</div>
+    ${sides.map(side => {
+      const teams = lg.teams.filter(t => t.lane === side);
+      return `<div class="lane ${side}">
+        <div class="lanecap">${esc(LANE_NAME[side] || side)}</div>
+        ${teams.map(t => {
+          /* A team's WHOLE path, not just this lane's side. The losers lane
+             used to filter to side==="L", which hid every winners-bracket
+             cell — including the loss that dropped the team into this lane.
+             Toodles showed one of its three matches. The universal axis is
+             what makes showing all of them work: the columns line up
+             regardless of which side a cell came from. */
+          const byLevel = {};
+          for (const c of t.cells) byLevel[levelOf[c.round]] = c;
+          return `<div class="trow${t.out ? " out" : ""}">${teamLabel(t)}${
+            disp.map(l => cell(byLevel[l])).join("")}</div>`;
+        }).join("")}
+      </div>`;
+    }).join("")}
+    </div>
+  </div>`;
+}
+
+/* A side shows all of its levels when they fit in n columns, and
+   otherwise a window of n, sitting on the round in play — lifted
+   from bracket-split.html's windowOf so both panes settle a long
+   bracket the same way. */
+function windowOf(levels, cur, n) {
+  if (levels.length <= n) return levels;
+  let i = levels.indexOf(cur);
+  if (i < 0) i = levels.length - 1;
+  const a = Math.max(0, Math.min(i - Math.floor((n - 1) / 2), levels.length - n));
+  return levels.slice(a, a + n);
+}
+
+const LAYOUTS = [
+  {id:"P4", name:"Swimlanes — SELECTED",
+   blurb:"Swimlanes on one universal axis, windowed to five levels at a time. Losers washed pink and winners blue, column labels centred, a LIVE or NEXT tag on the header of whichever column earns it, and BEAT/LOST cells telling you which team it was — because with a universal axis R2 means Winners Semi and Losers R1 simultaneously.",
+   verdict:"No frame, and no per-cell LIVE/NEXT either: a whole column is live, or a whole column is next, so that tag sits once on the header — the round in play comes from the data (the shallowest level with an unfinished match), and NEXT goes on the column right after it. Try ?round=3 to see a controller override.",
+   cost:false,
+   build:(f) => ({cols:"one", cards:f.leagues.map(lg => swimCard(lg, "480px"))})},
+
+  {id:"P5", name:"Same, in colours with no state meaning",
+   blurb:"Identical layout and axis. Only the lane wash differs: lime for the undefeated side, slate for the losers bracket.",
+   verdict:"Kept as the control. Pink is also LIVE in the state system, so P4 puts a pink wash behind the pink 'now' chips that live in the losers lane — flick between the two to see whether that costs you the signal. If it does, this is the fallback and nothing else changes.",
+   cost:true,
+   build:(f) => ({cols:"one", cards:f.leagues.map(lg => swimCard(lg, "480px"))})},
+
+  {id:"P1", name:"A column per bracket round",
+   blurb:"Exactly what you described: the slot columns become Winners R1 / Winners Semi / Losers R1 and so on, read off domain.Structure. A team's row is its route through the bracket, left to right.",
+   verdict:"Cleanest mapping of your idea, and it grids perfectly for single elim. The problem is double elim: 8 rounds, 2–3 played per team, so 72% of the grid is dashes — and 8 lanes will not fit two cards per row, so it is one league per screen.",
+   cost:true,
+   build:(f) => ({cols:"one", cards:f.leagues.map(lg => gridCard(lg, "460px"))})},
+
+  {id:"P2", name:"The team's own path",
+   blurb:"No fixed columns. Each team's cells run left to right along the route it actually took, with the round label above each one. Settled matches recede; the unsettled one is the bright end of the row.",
+   verdict:"My pick. No empty cells at all, so the type goes up and two leagues fit per screen. The round labels are still there — per cell instead of per column. You lose reading DOWN a column to see everyone in Losers R1, which the bracket pane answers better anyway.",
+   cost:false,
+   build:(f) => ({cols:"two", cards:f.leagues.map(lg => pathCard(lg, "420px"))})},
+
+];
+
+function board(f, layout) {
+  const built = layout.build(f);
+  const d = f.date.split("-");
+  const dateLabel = new Date(+d[0], +d[1]-1, +d[2])
+    .toLocaleDateString("en-US", {weekday:"long", month:"long", day:"numeric"});
+  const live = f.leagues.reduce((s, lg) =>
+    s + lg.teams.reduce((n, t) => n + t.cells.filter(c => c.status === "on_court").length, 0), 0) / 2;
+  return `<div class="stage" data-l="${layout.id}">
+    <div class="deco"><div class="slash"></div>
+      <svg class="grove" fill="currentColor" viewBox="0 0 1920 420">${GROVE}</svg></div>
+    <div class="safe">
+      <div class="bar">
+        <div><div class="venue">Third <em>Coast</em></div>
+          <div class="sub">Playoffs &nbsp;·&nbsp; ${f.leagues.length} leagues</div></div>
+        <div class="rt"><div class="clock" data-clock>${clockText()}</div><div class="datel">${esc(dateLabel)}</div></div>
+      </div>
+      <div class="phead"><span class="ptitle">Tonight</span>
+        <span class="pill pink">${live} on court</span>
+        <span class="pnote">bracket in progress</span></div>
+      <div class="cards ${built.cols}">${built.cards.join("")}</div>
+    </div>
+  </div>`;
+}
+
+/* Tries the live server first, falls back to the captured fixture when
+   nothing answers — same three-source idea board-data.js already uses,
+   so this sheet still opens with no server running. Only the FIRST fetch
+   decides that; the live poll below re-tries /api/brackets every time,
+   since a board screen with no server yet may well get one mid-rotation. */
+async function fetchFixture() {
+  const only = new URLSearchParams(location.search).get("league");
+  let f;
+  try {
+    const r = await fetch("/api/brackets", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    f = await r.json();
+  } catch {
+    const r = await fetch("data/playoff-2026-09-15.json", {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    f = await r.json();
+  }
+  if (only) f = {...f, leagues: f.leagues.filter(l => l.name === only)};
+  /* The grand final belongs to neither bracket, and gets its own screen
+     (bracket-final.html) -- bracket-split.html's own tree already
+     excludes side "F" from each bracket screen the same way. Every
+     team's own row also carries a cell for it (BuildBracket has no
+     reason to know this table shouldn't show one), so both the column
+     and each row's cell are stripped here, not just the column. */
+  f = {...f, leagues: f.leagues.map(l => ({
+    ...l,
+    rounds: l.rounds.filter(r => r.side !== "F"),
+    teams: l.teams.map(t => {
+      const cells = t.cells.filter(c => c.side !== "F");
+      /* A team whose MOST RECENT match was the grand final would
+         otherwise vanish from every remaining lane -- its lane is
+         recomputed off the filtered cells, same rule BuildBracket uses
+         (the last cell's side), so it stays where it was last seen
+         before the final took over. */
+      return {...t, cells, lane: cells.length ? cells[cells.length - 1].side : "W"};
+    }),
+  }))};
+  /* /api/brackets is leagues only -- it has no date of its own, unlike
+     the captured fixture (one frozen night). Default to today's, which
+     is the more honest answer for a board reading the live event log. */
+  if (!f.date) {
+    const t = new Date();
+    f.date = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`;
+  }
+  return f;
+}
+
+fetchFixture()
+  .then(f => {
+    document.getElementById("sheet").innerHTML = LAYOUTS.map(L => `
+      <section class="vari" id="l${L.id}">
+        <div class="cap">
+          <div class="no">${L.id}</div>
+          <div><h2>${esc(L.name)}</h2>
+            <div class="pages">${L.build(f).cols === "one" ? "one league per row" : "two leagues per row"}</div></div>
+          <div class="blurb">${esc(L.blurb)}</div>
+          <div class="verdict${L.cost?" cost":""}">${esc(L.verdict)}</div>
+        </div>
+        <div class="frame">${board(f, L)}</div>
+      </section>`).join("");
+
+    document.getElementById("nav").insertAdjacentHTML("beforeend",
+      LAYOUTS.map(L => `<a href="#l${L.id}"><b>${L.id}</b>${esc(L.name)}</a>`).join(""));
+
+
+    /* ?shot=<id> — strip the page to that one variant's frame, so the
+       rotation sheet can embed it without rebuilding the pane */
+    const shot = new URLSearchParams(location.search).get("shot");
+    if (shot) {
+      document.body.classList.add("shot");
+      document.querySelectorAll("#nav, .intro, #err").forEach(el => el.remove());
+      document.querySelectorAll(".vari").forEach(el => {
+        if (el.id !== "l" + shot) el.remove(); else el.querySelectorAll(".cap").forEach(c => c.remove());
+      });
+    }
+    const fit = () => document.querySelectorAll(".frame").forEach(fr =>
+      fr.querySelector(".stage").style.transform = `scale(${fr.clientWidth / 1920})`);
+    addEventListener("resize", fit); fit();
+
+    /* The live board: re-fetch and re-render just each surviving
+       .frame's own content, every 5s (the interval the design settled
+       on) — never rebuild #sheet itself, which would undo ?shot='s DOM
+       reduction to one variant. */
+    setInterval(async () => {
+      let fresh;
+      try { fresh = await fetchFixture(); } catch { return; }
+      document.querySelectorAll(".vari").forEach(el => {
+        const L = LAYOUTS.find(x => "l" + x.id === el.id);
+        const frame = L && el.querySelector(".frame");
+        if (frame) frame.innerHTML = board(fresh, L);
+      });
+      fit();
+    }, 5000);
+  })
+  .catch(e => {
+    const el = document.getElementById("err");
+    el.style.display = "block";
+    el.innerHTML = `<b>Could not load the night</b> (${esc(e.message)}).<br>
+      Neither the live server's <code>/api/brackets</code> nor the captured fixture
+      answered — this sheet needs one of them over HTTP:
+      <code>cd prototype &amp;&amp; python -m http.server 8099</code> for the fixture,
+      or run <code>volleyball -web prototype</code> for the real thing.
+      Regenerate the fixture with <code>go run ./prototype/tools/playofffixture</code>.`;
+  });
+
+/* keep the clock in the header honest -- see startClock in board-data.js */
+startClock();
+</script>
+</body>
+</html>

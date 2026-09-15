@@ -1,0 +1,139 @@
+{
+  "venue": "Third Coast",
+  "courts": [
+    {
+      "id": "Court 1",
+      "name": "Court 1"
+    },
+    {
+      "id": "Court 2",
+      "name": "Court 2"
+    },
+    {
+      "id": "Court 3",
+      "name": "Court 3"
+    },
+    {
+      "id": "Court 4",
+      "name": "Court 4"
+    },
+    {
+      "id": "Court 5",
+      "name": "Court 5"
+    },
+    {
+      "id": "Court 6",
+      "name": "Court 6"
+    },
+    {
+      "id": "Court 7",
+      "name": "Court 7"
+    },
+    {
+      "id": "Court 8",
+      "name": "Court 8"
+    },
+    {
+      "id": "Court 9",
+      "name": "Court 9"
+    },
+    {
+      "id": "Court 10",
+      "name": "Court 10"
+    },
+    {
+      "id": "Court 11",
+      "name": "Court 11"
+    },
+    {
+      "id": "Court 12",
+      "name": "Court 12"
+    }
+  ],
+  "leagues": [
+    {
+      "id": "Coed 4s A",
+      "name": "Coed 4s A",
+      "format": "double",
+      "teams": [
+        "1. Carolina Beach Bumpers (Ashton)",
+        "2. Holy Blockamole Infinity (Bryan)",
+        "3. Hustle Gang (Calvin)",
+        "4. Team Jacob (Mark)",
+        "5. Bombaclat (Aatir)",
+        "6. Toodles (Michael)",
+        "7. Score Check (Julianna)",
+        "8. Watermelon (Lauren)"
+      ]
+    },
+    {
+      "id": "Coed 4s B",
+      "name": "Coed 4s B",
+      "format": "double",
+      "teams": [
+        "1. Beach Bunnies (Jimmy)",
+        "2. Volley Llamas (Daphne)",
+        "3. Milk (Sean)",
+        "4. The Empire Spikes Back (Ash)",
+        "5. Can You Dig It? (Marc)",
+        "6. Bad Hombres (Jaimie)",
+        "7. Gold Diggerz (JT)",
+        "8. Big Dig Energy (Chad)",
+        "9. Carpe Digem (Eric)",
+        "10. The Replacements (Joe)"
+      ]
+    },
+    {
+      "id": "Coed 4s BB",
+      "name": "Coed 4s BB",
+      "format": "double",
+      "teams": [
+        "1. Chocolate City (Samanda)",
+        "2. Not Good at Volleyball Puns (Daniel)",
+        "3. Twin Peaks (Dan)",
+        "4. The Vacacioners (Phil)",
+        "5. Key Bumps (Harley)",
+        "6. Bongos (Bradley)",
+        "7. Net Ninjas (Katelyn)",
+        "8. 3 OGs and Bae (Johnny)"
+      ]
+    },
+    {
+      "id": "Coed 4s Upper Rec",
+      "name": "Coed 4s Upper Rec",
+      "format": "double",
+      "teams": [
+        "1. Gold Star for Effort (Merilyn)",
+        "2. What Court Are We On (Bear)",
+        "3. Offense Only (Zhen)",
+        "4. The Volleybeaners (Emanuel)",
+        "5. Bump, set, dammit! (Michael)",
+        "6. Beach Please (Annie)",
+        "7. Notorious DIG (Connor)",
+        "8. BLT (Sean)",
+        "9. Save a Horse Dig a Volleyball (Sarah)",
+        "10. The Thurmanators (David)",
+        "11. Sets Pistols (Christina)",
+        "12. Unprotected Sets (Chase)"
+      ]
+    },
+    {
+      "id": "Womens 2s A",
+      "name": "Womens 2s A",
+      "format": "double",
+      "teams": [
+        "1. Emily & Lauren",
+        "2. Molly & Nicole",
+        "3. Yanni & Ali",
+        "4. Juli & Lauren",
+        "5. Melissa & Lindsay",
+        "6. Sarah & Jo",
+        "7. Erika & Becca",
+        "8. Elaine & Tina",
+        "9. Beth & Julia",
+        "10. Liz & Madison"
+      ]
+    }
+  ],
+  "branding": {}
+}
